@@ -1,0 +1,9 @@
+# The tool must run on the Python that macOS ships with its command-line tools.
+target-version = "py39"
+line-length = 104
+
+[lint]
+select = ["E", "F", "B", "C901"]
+
+[lint.mccabe]
+max-complexity = 10
