@@ -2,15 +2,20 @@
 # tests/run [static|fast|full]
 #
 # static  no VS Code: the tool, the sources, the manifest, the public boundary, the pages
-# fast    static, then the tests that start the real VS Code (none yet: plan 002)
+# fast    static, then the tests that start the real VS Code without a window (tests/session);
+#         they are skipped, with the reason, where VS Code or Xvfb is missing
 # full    fast; what must be green before a merge
 #
 # Exit status: 0 passed, 1 a test failed, 2 usage error.
 set -eu
 cd "$(dirname "$0")/.."
 case "${1:-fast}" in
-static | fast | full)
+static)
     exec "${PYTHON:-python3}" -m unittest discover -s tests -t . -p '*_test.py'
+    ;;
+fast | full)
+    "${PYTHON:-python3}" -m unittest discover -s tests -t . -p '*_test.py'
+    PYTHONPATH=. exec "${PYTHON:-python3}" -m unittest discover -s tests/session -p '*_test.py'
     ;;
 *)
     echo "usage: tests/run [static|fast|full]" >&2
