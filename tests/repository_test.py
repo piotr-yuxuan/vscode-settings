@@ -59,6 +59,18 @@ class Repository(unittest.TestCase):
     def test_the_manifest_is_coherent(self):
         tool.load_manifest(REPO)
 
+    def test_no_request_installs_an_extension_beside_its_exclusive_partner(self):
+        manifest = tool.load_manifest(REPO)
+        groups = sorted({entry["group"] for entry in manifest["extensions"]})
+        requests = [[group] for group in groups] + [groups]
+        for pair in manifest["exclusive"]:
+            for installed, other in (pair, pair[::-1]):
+                for spelling in (installed, installed.lower(), installed.upper()):
+                    for request in requests:
+                        with self.subTest(installed=spelling, request=request):
+                            to_install, _ = tool.extensions_to_install(manifest, request, [spelling])
+                            self.assertNotIn(other, to_install)
+
     def test_the_generated_files_are_current(self):
         generated = tool.generated_files(self.files["user/keybindings.json"], tool.load_manifest(REPO))
         for name, text in generated.items():
@@ -74,13 +86,15 @@ class Repository(unittest.TestCase):
         terms = [line.strip() for line in lines if line.strip()]
         for name, text in self.files.items():
             with self.subTest(file=name):
-                self.assert_no_findings(checks.private_findings(f"{name}\n{text}", terms))
+                self.assert_no_findings(checks.private_findings(name, terms))
+                self.assert_no_findings(checks.private_findings(text, terms))
 
     def test_no_file_holds_a_unicode_dash_nor_has_one_in_its_name(self):
         for name, text in self.files.items():
             if name != "LICENSE":
                 with self.subTest(file=name):
-                    self.assert_no_findings(checks.dash_findings(f"{name}\n{text}"))
+                    self.assert_no_findings(checks.dash_findings(name))
+                    self.assert_no_findings(checks.dash_findings(text))
 
     def test_every_link_between_pages_leads_somewhere(self):
         pages = {name: text for name, text in self.files.items() if name.endswith(".md")}
