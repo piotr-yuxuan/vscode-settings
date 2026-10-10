@@ -28,7 +28,7 @@ REPO = Path(__file__).resolve().parent.parent
 _COMMENT = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
 _TRAILING_COMMA = re.compile(r'"(?:\\.|[^"\\])*"|,(?=\s*[\]}])')
 _SECTION = re.compile(r"^\s*// == (.+) ==\s*$")
-_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*\.[A-Za-z0-9][A-Za-z0-9-]*$")
+_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*\.[A-Za-z0-9][A-Za-z0-9-]*")
 
 _EMACS_MODIFIERS = {"ctrl": "C-", "alt": "M-", "shift": "S-", "cmd": "s-"}
 _EMACS_NAMES = {"enter": "RET", "space": "SPC", "tab": "TAB", "escape": "ESC", "backspace": "DEL"}
@@ -55,13 +55,16 @@ def parse_jsonc(text: str, source: str, expect: type | None = None):
             raise ValueError(f"repeated key {repeated[0]!r}")
         return dict(pairs)
 
+    def not_json(constant):
+        raise ValueError(f"{constant} is not JSON")
+
     def keep_strings(match):
         # Comments become spaces, newlines kept, so that an error still names the right line.
         return match.group() if match.group().startswith('"') else re.sub(r"[^\n]", " ", match.group())
 
     strict = _TRAILING_COMMA.sub(keep_strings, _COMMENT.sub(keep_strings, text))
     try:
-        value = json.loads(strict, object_pairs_hook=unique)
+        value = json.loads(strict, object_pairs_hook=unique, parse_constant=not_json)
     except ValueError as error:
         raise ConfigError(f"{source}: {error}") from error
     if expect is not None and not isinstance(value, expect):
@@ -98,11 +101,42 @@ def differences(old: dict, new: dict, path: tuple = ()) -> list:
     return found
 
 
+def deployment_plan(settings: tuple, rules: tuple) -> dict:
+    """Decide what `apply` writes: {file name: (what changes, new content)}.
+
+    Each argument is (baseline, machine-local, deployed). Nothing changes for a file whose
+    list of changes is empty. Deployed settings keep every key that neither the baseline nor
+    the machine sets: the result is deployed, overlaid by (baseline overlaid by machine-local).
+    Key bindings are the baseline rules then the machine-local ones; a rule is compared as
+    JSON text, and the order of the rules counts, since VS Code lets the later rule win.
+    """
+    baseline, local, deployed = settings
+    target = deep_merge(deployed, deep_merge(baseline, local))
+    report = [f"{' > '.join(path)}: {was} -> {now}" for path, was, now in differences(deployed, target)]
+    plan = {"settings.json": (report, json.dumps(target, indent=2, ensure_ascii=False) + "\n")}
+
+    baseline, local, deployed = rules
+    wanted = [json.dumps(rule, sort_keys=True) for rule in baseline + local]
+    present = [json.dumps(rule, sort_keys=True) for rule in deployed]
+    report = []
+    if present != wanted:
+        report = [f"{len(wanted)} rules to write"] + [
+            f"drops {rule}" for rule in present if rule not in wanted
+        ]
+    lines = ",\n".join("  " + json.dumps(rule, ensure_ascii=False) for rule in baseline + local)
+    plan["keybindings.json"] = (report, f"[\n{lines}\n]\n")
+    return plan
+
+
 def emacs_notation(key: str) -> str:
     """Write a VS Code key such as `ctrl+x shift+o` the way Emacs does: `C-x O`."""
     strokes = []
     for stroke in key.split():
         *modifiers, name = stroke.split("+")
+        if not name or set(modifiers) - set(_EMACS_MODIFIERS):
+            raise ConfigError(
+                f"{key!r}: a stroke is modifiers among {sorted(_EMACS_MODIFIERS)}, then a key"
+            )
         if "shift" in modifiers and (name in _SHIFTED or (len(name) == 1 and name.isalpha())):
             modifiers.remove("shift")
             name = _SHIFTED.get(name, name.upper())
@@ -110,6 +144,8 @@ def emacs_notation(key: str) -> str:
             name = _EMACS_NAMES.get(name, f"<{name}>")
         prefix = "".join(text for modifier, text in _EMACS_MODIFIERS.items() if modifier in modifiers)
         strokes.append(prefix + name)
+    if not strokes:
+        raise ConfigError("an empty key")
     return " ".join(strokes)
 
 
@@ -129,6 +165,8 @@ def described_rules(text: str, source: str) -> list:
             description.append(stripped[2:].strip())
         elif stripped.startswith("{"):
             rule = parse_jsonc(stripped.rstrip(","), f"{source}:{number}", dict)
+            if not isinstance(rule.get("key"), str) or not isinstance(rule.get("command"), str):
+                raise ConfigError(f"{source}:{number}: a rule needs a `key` and a `command`, both text")
             found.append((section, " ".join(description), rule))
             description = []
         else:
@@ -144,7 +182,7 @@ def manifest_findings(manifest: dict) -> list:
     findings = []
     for entry in entries:
         identifier = entry.get("id")
-        if not isinstance(identifier, str) or not _IDENTIFIER.match(identifier):
+        if not isinstance(identifier, str) or not _IDENTIFIER.fullmatch(identifier):
             findings.append(f"{identifier!r} is not a publisher.name identifier")
         findings += [
             f"{identifier!r} has no {field}"
@@ -155,10 +193,14 @@ def manifest_findings(manifest: dict) -> list:
     if len(groups) != len(entries):
         findings.append("an identifier is listed twice (case is ignored)")
     for pair in manifest.get("exclusive", []):
-        unknown = [name for name in pair if str(name).lower() not in groups]
-        if len(pair) != 2 or unknown:
-            findings.append(f"exclusive {pair!r} must name two listed extensions")
-        elif all(groups[name.lower()] == "core" for name in pair):
+        names = {str(name).lower() for name in pair} if isinstance(pair, list) else set()
+        if len(names) != 2 or len(pair) != 2:
+            findings.append(f"exclusive {pair!r} must name two different extensions")
+        elif names - set(groups):
+            findings.append(
+                f"exclusive {pair!r} names {sorted(names - set(groups))}, which is not listed"
+            )
+        elif all(groups[name] == "core" for name in names):
             findings.append(f"exclusive {pair!r} are both in the core group")
     return findings
 
@@ -211,15 +253,11 @@ def user_dir(platform: str, env, home: Path) -> Path:
 
 
 def extensions_to_install(manifest: dict, groups: list, installed: list) -> tuple:
-    """Decide (missing, blocked) for the requested groups, comparing identifiers without case.
+    """Decide (to install, blocked) for the requested groups, comparing identifiers without case.
 
-    An extension is blocked when its exclusive partner is installed, or is requested in the
-    same call and listed first in the pair.
+    Of two exclusive extensions, the one that is installed blocks the other. When neither is
+    installed and the first of the pair is requested, the first blocks the second.
     """
-    known = {entry["group"] for entry in manifest["extensions"]}
-    unknown = sorted(set(groups) - known)
-    if unknown:
-        raise UsageError(f"unknown group {unknown[0]!r}; the groups are: {', '.join(sorted(known))}")
     have = {identifier.lower() for identifier in installed}
     missing = [
         entry["id"]
@@ -230,26 +268,36 @@ def extensions_to_install(manifest: dict, groups: list, installed: list) -> tupl
     blocked = set()
     for first, second in manifest.get("exclusive", []):
         first, second = first.lower(), second.lower()
-        if first in have or first in wanted:
+        if first in have:
             blocked.add(second)
         elif second in have:
             blocked.add(first)
+        elif first in wanted:
+            blocked.add(second)
     return (
         [identifier for identifier in missing if identifier.lower() not in blocked],
         [identifier for identifier in missing if identifier.lower() in blocked],
     )
 
 
+def read_text(path: Path) -> str:
+    """Read a file as UTF-8 text; anything else is an error that names the file."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise ConfigError(f"{path}: not UTF-8 text ({error})") from error
+
+
 def read_optional(path: Path, kind: type):
     """Parse a file that may be absent or empty; either is the empty document of that kind."""
-    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    text = read_text(path) if path.is_file() else ""
     return parse_jsonc(text, str(path), kind) if text.strip() else kind()
 
 
 def load_manifest(repo: Path) -> dict:
     """Read and check the extension manifest of the repository."""
     source = "user/extensions.json"
-    manifest = parse_jsonc((repo / source).read_text(encoding="utf-8"), source, dict)
+    manifest = parse_jsonc(read_text(repo / source), source, dict)
     findings = manifest_findings(manifest)
     if findings:
         raise ConfigError(f"{source}: " + "; ".join(findings))
@@ -257,25 +305,32 @@ def load_manifest(repo: Path) -> dict:
 
 
 def write_file(path: Path, text: str, backup: Path) -> None:
-    """Replace `path` in one step, after copying what was there into `backup`.
+    """Replace `path` in one step, keeping in `backup` a copy of what it held.
 
-    The first content ever replaced is kept as `<name>.original`, the latest as `<name>.previous`.
+    The first content ever replaced stays as `<name>.original`, the latest as
+    `<name>.previous`. A failure leaves the file, its backups and both directories as they
+    were. A replaced file keeps its mode; a new one is readable by its owner only.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    kept, original = backup / f"{path.name}.kept", backup / f"{path.name}.original"
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             stream.write(text)
         if path.exists():
             backup.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, backup / f"{path.name}.previous")
-            if not (backup / f"{path.name}.original").exists():
-                shutil.copy2(path, backup / f"{path.name}.original")
+            shutil.copy2(path, kept)
             shutil.copymode(path, temporary)
         os.replace(temporary, path)
     except BaseException:
-        Path(temporary).unlink(missing_ok=True)
+        for leftover in (Path(temporary), kept):
+            leftover.unlink(missing_ok=True)
         raise
+    if kept.exists():
+        if not original.exists():
+            shutil.copy2(kept, f"{original}.partial")
+            os.replace(f"{original}.partial", original)
+        os.replace(kept, backup / f"{path.name}.previous")
 
 
 def cmd_deploy(repo: Path, user: Path, write: bool) -> int:
@@ -284,36 +339,21 @@ def cmd_deploy(repo: Path, user: Path, write: bool) -> int:
     for name in ("settings.json", "keybindings.json"):
         if (user / name).is_symlink():
             raise ConfigError(f"{user / name} is a symbolic link; it is not replaced")
-    baseline = parse_jsonc(
-        (repo / "user/settings.json").read_text(encoding="utf-8"), "user/settings.json", dict
+    plan = deployment_plan(
+        (
+            parse_jsonc(read_text(repo / "user/settings.json"), "user/settings.json", dict),
+            read_optional(local / "settings.json", dict),
+            read_optional(user / "settings.json", dict),
+        ),
+        (
+            parse_jsonc(read_text(repo / "user/keybindings.json"), "user/keybindings.json", list),
+            read_optional(local / "keybindings.json", list),
+            read_optional(user / "keybindings.json", list),
+        ),
     )
-    rules = parse_jsonc(
-        (repo / "user/keybindings.json").read_text(encoding="utf-8"), "user/keybindings.json", list
-    )
-    deployed_settings = read_optional(user / "settings.json", dict)
-    deployed_rules = read_optional(user / "keybindings.json", list)
-    settings = deep_merge(
-        deployed_settings, deep_merge(baseline, read_optional(local / "settings.json", dict))
-    )
-    rules = rules + read_optional(local / "keybindings.json", list)
-
-    report = [
-        f"{' > '.join(path)}: {was} -> {now}"
-        for path, was, now in differences(deployed_settings, settings)
-    ]
-    pending = {"settings.json": (report, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")}
-    if deployed_rules != rules:
-        report = [f"{len(rules)} rules to write"]
-        report += [f"drops {json.dumps(rule)}" for rule in deployed_rules if rule not in rules]
-        lines = ",\n".join("  " + json.dumps(rule, ensure_ascii=False) for rule in rules)
-        pending["keybindings.json"] = (report, f"[\n{lines}\n]\n")
-
     print(f"machine-local directory: {local}" + ("" if local.is_dir() else " (absent)"))
-    changed = False
-    for name, (report, text) in pending.items():
-        if not report:
-            continue
-        changed = True
+    changed = {name: change for name, change in plan.items() if change[0]}
+    for name, (report, text) in changed.items():
         print(f"{user / name}: {'written' if write else 'apply would change'}")
         print("\n".join(f"  {line}" for line in report))
         if write:
@@ -323,17 +363,23 @@ def cmd_deploy(repo: Path, user: Path, write: bool) -> int:
     return 1 if changed and not write else 0
 
 
-def run_code(code: str, arguments: list) -> str:
+def run_code(code: str, arguments: list, must_succeed: bool) -> str:
     """Run VS Code's command line with a deadline; return what it printed."""
     result = subprocess.run([code, *arguments], capture_output=True, text=True, timeout=900)
     if result.returncode != 0:
         sys.stderr.write(result.stderr)
+        if must_succeed:
+            raise OSError(f"`code {' '.join(arguments)}` failed with status {result.returncode}")
     return result.stdout
 
 
 def cmd_extensions(repo: Path, groups: list) -> int:
     """`extensions`: install what the requested groups lack, in one call, then say what happened."""
     manifest = load_manifest(repo)
+    known = sorted({entry["group"] for entry in manifest["extensions"]})
+    unknown = sorted(set(groups) - set(known))
+    if unknown:
+        raise UsageError(f"unknown group {unknown[0]!r}; the groups are: {', '.join(known)}")
     candidates = [Path("/") / _MAC_CODE, Path.home() / _MAC_CODE]
     code = shutil.which("code") or next((str(path) for path in candidates if path.is_file()), None)
     if code is None:
@@ -341,29 +387,29 @@ def cmd_extensions(repo: Path, groups: list) -> int:
             "the `code` command was not found; in VS Code run "
             "'Shell Command: Install 'code' command in PATH' from the Command Palette"
         )
-    missing, blocked = extensions_to_install(
-        manifest, groups, run_code(code, ["--list-extensions"]).split()
-    )
+    # A listing that fails says nothing about what is installed: it must not be read as "nothing".
+    installed = run_code(code, ["--list-extensions"], must_succeed=True).split()
+    missing, blocked = extensions_to_install(manifest, groups, installed)
     still_missing = []
     if missing:
-        run_code(
-            code,
-            [argument for identifier in missing for argument in ("--install-extension", identifier)],
-        )
-        installed = run_code(code, ["--list-extensions"]).split()
+        install = [
+            argument for identifier in missing for argument in ("--install-extension", identifier)
+        ]
+        run_code(code, install, must_succeed=False)
+        installed = run_code(code, ["--list-extensions"], must_succeed=True).split()
         still_missing = extensions_to_install(manifest, groups, installed)[0]
     for identifier in missing:
         print(f"{identifier}: {'STILL MISSING' if identifier in still_missing else 'installed'}")
     for identifier in blocked:
-        print(f"{identifier}: not installed, its exclusive partner is installed or comes first")
+        print(f"{identifier}: left out, the extension it is exclusive with is installed or comes first")
     if not missing and not blocked:
         print(f"nothing to install for: {', '.join(groups)}")
-    return 1 if still_missing or blocked else 0
+    return 1 if still_missing else 0
 
 
 def cmd_docs(repo: Path) -> int:
     """`docs`: rewrite the files generated from the sources."""
-    keybindings = (repo / "user/keybindings.json").read_text(encoding="utf-8")
+    keybindings = read_text(repo / "user/keybindings.json")
     for relative, text in generated_files(keybindings, load_manifest(repo)).items():
         (repo / relative).parent.mkdir(parents=True, exist_ok=True)
         (repo / relative).write_text(text, encoding="utf-8")

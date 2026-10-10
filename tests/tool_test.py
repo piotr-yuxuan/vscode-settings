@@ -12,6 +12,8 @@ from unittest import mock
 
 from tool import vscode_settings as tool
 
+# Shaped like the real manifest: the default member of an exclusive pair is in the core
+# group and listed first, its alternative is in an optional group.
 MANIFEST = {
     "exclusive": [["official.dbt", "other.dbt"]],
     "extensions": [
@@ -43,6 +45,9 @@ class ParseJsonc(unittest.TestCase):
         text = '// header\n{\n  "a": 1, /* inline */\n  "b": [1, 2,],\n}\n'
         self.assertEqual(tool.parse_jsonc(text, "example"), {"a": 1, "b": [1, 2]})
 
+    def test_a_trailing_comma_may_be_followed_by_a_comment(self):
+        self.assertEqual(tool.parse_jsonc('{"a": 1, // last\n}', "example"), {"a": 1})
+
     def test_what_looks_like_a_comment_or_a_trailing_comma_inside_a_string_is_kept(self):
         text = '{"url": "https://example.org/a", "glob": "/* x */", "end": "a, ]"}'
         self.assertEqual(
@@ -50,13 +55,20 @@ class ParseJsonc(unittest.TestCase):
             {"url": "https://example.org/a", "glob": "/* x */", "end": "a, ]"},
         )
 
+    def test_an_escaped_quote_does_not_end_a_string(self):
+        self.assertEqual(
+            tool.parse_jsonc(r'{"a": "q\", ]", "b": "\\"}', "example"), {"a": 'q", ]', "b": "\\"}
+        )
+
     def test_a_repeated_key_is_an_error_that_names_the_file_and_the_key(self):
         with self.assertRaisesRegex(tool.ConfigError, "example.*'a'"):
             tool.parse_jsonc('{"a": 1, "b": {"c": 1}, "a": 2}', "example")
 
     def test_malformed_text_is_an_error_that_names_the_file(self):
-        with self.assertRaisesRegex(tool.ConfigError, "example"):
-            tool.parse_jsonc('{"a": ', "example")
+        for text in ('{"a": ', '{"a": NaN}', '{"a": Infinity}', ""):
+            with self.subTest(text=text):
+                with self.assertRaisesRegex(tool.ConfigError, "example"):
+                    tool.parse_jsonc(text, "example")
 
     def test_an_array_where_an_object_is_expected_is_an_error(self):
         with self.assertRaisesRegex(tool.ConfigError, "example"):
@@ -115,6 +127,12 @@ class EmacsNotation(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(tool.emacs_notation(key), expected)
 
+    def test_a_key_it_cannot_write_is_an_error_not_a_wrong_answer(self):
+        for key in ("meta+x", "ctrl++", "hyper+a b", ""):
+            with self.subTest(key=key):
+                with self.assertRaises(tool.ConfigError):
+                    tool.emacs_notation(key)
+
 
 class DescribedRules(unittest.TestCase):
     def test_each_rule_carries_its_section_and_the_comment_above_it(self):
@@ -134,6 +152,12 @@ class DescribedRules(unittest.TestCase):
                 ("Files", "", {"key": "f8", "command": "toggle"}),
             ],
         )
+
+    def test_a_rule_without_a_key_or_a_command_is_an_error_that_names_its_line(self):
+        for line in ('{ "key": "f8" }', '{ "command": "x" }', '{ "key": 8, "command": "x" }'):
+            with self.subTest(line=line):
+                with self.assertRaisesRegex(tool.ConfigError, "example:2"):
+                    tool.described_rules(f"[\n  {line}\n]", "example")
 
 
 class GeneratedFiles(unittest.TestCase):
@@ -184,51 +208,109 @@ class ManifestFindings(unittest.TestCase):
     def test_a_coherent_manifest_has_none(self):
         self.assertEqual(tool.manifest_findings(MANIFEST), [])
 
-    def test_each_defect_is_found(self):
+    def test_each_defect_is_found_and_named(self):
         entry = {"id": "a.b", "group": "core", "purpose": "P."}
-        defects = {
-            "an identifier that is not publisher.name": {"extensions": [dict(entry, id="edamagit")]},
-            "the same identifier twice, whatever the case": {
-                "extensions": [entry, dict(entry, id="A.B")]
-            },
-            "no purpose": {"extensions": [dict(entry, purpose="")]},
-            "no group": {"extensions": [{"id": "a.b", "purpose": "P."}]},
-            "an exclusive pair that names an unknown extension": {
-                "extensions": [entry],
-                "exclusive": [["a.b", "c.d"]],
-            },
-            "an exclusive pair installed together by default": {
-                "extensions": [entry, dict(entry, id="c.d")],
-                "exclusive": [["a.b", "c.d"]],
-            },
-            "no list of extensions": {"extension": []},
-        }
-        for defect, manifest in defects.items():
-            with self.subTest(defect=defect):
-                self.assertNotEqual(tool.manifest_findings(manifest), [])
+        other = dict(entry, id="c.d")
+        defects = [
+            ("edamagit", {"extensions": [dict(entry, id="edamagit")]}),
+            ("a.b\\\\n", {"extensions": [dict(entry, id="a.b\n")]}),
+            ("twice", {"extensions": [entry, dict(entry, id="A.B")]}),
+            ("purpose", {"extensions": [dict(entry, purpose="")]}),
+            ("group", {"extensions": [{"id": "a.b", "purpose": "P."}]}),
+            ("c.d", {"extensions": [entry], "exclusive": [["a.b", "c.d"]]}),
+            ("core", {"extensions": [entry, other], "exclusive": [["a.b", "c.d"]]}),
+            ("exclusive", {"extensions": [entry], "exclusive": [["a.b", "A.B"]]}),
+            ("exclusive", {"extensions": [entry], "exclusive": [5]}),
+            ("exclusive", {"extensions": [entry, other], "exclusive": [["a.b"]]}),
+            ("extensions", {"extension": []}),
+        ]
+        for named, manifest in defects:
+            with self.subTest(manifest=manifest):
+                findings = tool.manifest_findings(manifest)
+                self.assertEqual(len(findings), 1, findings)
+                self.assertRegex(findings[0], named)
 
 
 class ExtensionsToInstall(unittest.TestCase):
+    """(to install, blocked) for the requested groups, given what is installed."""
+
+    def decide(self, groups, installed, manifest=MANIFEST):
+        return tool.extensions_to_install(manifest, groups, installed)
+
     def test_only_the_requested_groups_and_only_what_is_missing(self):
-        self.assertEqual(
-            tool.extensions_to_install(MANIFEST, ["core"], ["some.keymap"]), (["official.dbt"], [])
-        )
+        self.assertEqual(self.decide(["core"], ["some.keymap"]), (["official.dbt"], []))
 
-    def test_an_unknown_group_is_refused(self):
-        with self.assertRaisesRegex(tool.UsageError, "nope"):
-            tool.extensions_to_install(MANIFEST, ["nope"], [])
+    def test_installed_identifiers_compare_without_case(self):
+        self.assertEqual(self.decide(["core"], ["SOME.KEYMAP", "Official.Dbt"]), ([], []))
 
-    def test_an_extension_whose_exclusive_partner_is_installed_is_blocked(self):
-        self.assertEqual(
-            tool.extensions_to_install(MANIFEST, ["sql"], ["Official.DBT"]),
-            (["some.linter"], ["other.dbt"]),
-        )
+    def test_the_alternative_is_blocked_while_the_default_is_installed(self):
+        self.assertEqual(self.decide(["sql"], ["Official.DBT"]), (["some.linter"], ["other.dbt"]))
 
-    def test_of_two_exclusive_extensions_requested_together_the_first_listed_wins(self):
+    def test_the_default_is_blocked_while_the_alternative_is_installed(self):
+        self.assertEqual(self.decide(["core"], ["some.keymap", "Other.Dbt"]), ([], ["official.dbt"]))
+
+    def test_requested_together_and_neither_installed_the_first_listed_wins(self):
         self.assertEqual(
-            tool.extensions_to_install(MANIFEST, ["core", "sql"], ["some.keymap"]),
+            self.decide(["core", "sql"], ["some.keymap"]),
             (["official.dbt", "some.linter"], ["other.dbt"]),
         )
+
+    def test_the_alternative_alone_is_installed_when_the_default_is_neither_there_nor_asked(self):
+        self.assertEqual(self.decide(["sql"], []), (["other.dbt", "some.linter"], []))
+
+    def test_the_order_of_a_pair_only_matters_when_neither_is_installed(self):
+        reversed_pair = dict(MANIFEST, exclusive=[["other.dbt", "official.dbt"]])
+        self.assertEqual(
+            self.decide(["sql"], ["official.dbt"], reversed_pair), (["some.linter"], ["other.dbt"])
+        )
+        self.assertEqual(
+            self.decide(["core"], ["some.keymap", "other.dbt"], reversed_pair), ([], ["official.dbt"])
+        )
+        self.assertEqual(
+            self.decide(["core", "sql"], ["some.keymap"], reversed_pair),
+            (["other.dbt", "some.linter"], ["official.dbt"]),
+        )
+
+
+class DeploymentPlan(unittest.TestCase):
+    """What `apply` would write, decided from values: (baseline, machine-local, deployed) twice."""
+
+    RULE = {"key": "f8", "command": "toggle", "args": True}
+
+    def plan(self, settings=({}, {}, {}), rules=([], [], [])):
+        return tool.deployment_plan(settings, rules)
+
+    def test_nothing_changes_when_the_deployed_files_already_hold_everything(self):
+        plan = self.plan(
+            ({"a": 1}, {"b": 2}, {"mine": 0, "a": 1, "b": 2}), ([self.RULE], [], [self.RULE])
+        )
+        self.assertEqual([report for report, _ in plan.values()], [[], []])
+
+    def test_settings_keep_what_the_repository_does_not_set_and_the_machine_wins(self):
+        settings = ({"a": 1, "[python]": {"x": 1}}, {"a": 2}, {"mine": True, "[python]": {"y": 2}})
+        report, text = self.plan(settings)["settings.json"]
+        self.assertEqual(json.loads(text), {"mine": True, "[python]": {"y": 2, "x": 1}, "a": 2})
+        self.assertEqual(len(report), 2)
+
+    def test_key_bindings_are_the_baseline_rules_then_the_machine_local_ones(self):
+        local = {"key": "f8", "command": "local"}
+        report, text = self.plan(rules=([self.RULE], [local], []))["keybindings.json"]
+        self.assertEqual(json.loads(text), [self.RULE, local])
+        self.assertTrue(report)
+
+    def test_a_rule_whose_value_is_one_instead_of_true_is_a_change(self):
+        report, _ = self.plan(rules=([self.RULE], [], [dict(self.RULE, args=1)]))["keybindings.json"]
+        self.assertTrue(report)
+
+    def test_the_same_rules_in_another_order_are_a_change(self):
+        other = {"key": "f8", "command": "other"}
+        report, _ = self.plan(rules=([self.RULE, other], [], [other, self.RULE]))["keybindings.json"]
+        self.assertTrue(report)
+
+    def test_a_deployed_rule_that_would_be_dropped_is_named(self):
+        added = {"key": "f9", "command": "added.in.vscode"}
+        report, _ = self.plan(rules=([self.RULE], [], [self.RULE, added]))["keybindings.json"]
+        self.assertIn("added.in.vscode", "\n".join(report))
 
 
 class Deployment(unittest.TestCase):
@@ -262,31 +344,27 @@ class Deployment(unittest.TestCase):
     def printed(self):
         return "\n".join(" ".join(map(str, call.args)) for call in self.output.call_args_list)
 
-    def test_apply_keeps_what_the_repository_does_not_set(self):
+    def files(self):
+        return {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+
+    def test_apply_writes_both_files_and_keeps_what_the_repository_does_not_set(self):
         self.write(self.user / "settings.json", '{"mine": true, "[python]": {"b": 2}, "managed": 0}')
+        self.write(self.local / "settings.json", '{"local": "x"}')
+        self.write(self.local / "keybindings.json", '[{"key": "f8", "command": "local"}]')
         self.assertEqual(tool.cmd_deploy(self.repo, self.user, write=True), 0)
         self.assertEqual(
-            self.deployed("settings.json"), {"mine": True, "[python]": {"b": 2, "a": 1}, "managed": 1}
+            self.deployed("settings.json"),
+            {"mine": True, "[python]": {"b": 2, "a": 1}, "managed": 1, "local": "x"},
         )
-
-    def test_a_machine_local_value_wins_over_the_baseline(self):
-        self.write(self.local / "settings.json", '{"managed": 2, "local": "x"}')
-        tool.cmd_deploy(self.repo, self.user, write=True)
-        self.assertEqual(
-            self.deployed("settings.json"), {"managed": 2, "[python]": {"a": 1}, "local": "x"}
-        )
-
-    def test_key_bindings_are_the_baseline_rules_then_the_machine_local_ones(self):
-        self.write(self.local / "keybindings.json", '[{"key": "f8", "command": "local"}]')
-        tool.cmd_deploy(self.repo, self.user, write=True)
         self.assertEqual(
             self.deployed("keybindings.json"),
             [{"key": "f8", "command": "base"}, {"key": "f8", "command": "local"}],
         )
 
     def test_status_writes_nothing_and_says_whether_apply_would(self):
+        before = self.files()
         self.assertEqual(tool.cmd_deploy(self.repo, self.user, write=False), 1)
-        self.assertFalse((self.user / "settings.json").exists())
+        self.assertEqual(self.files(), before)
         tool.cmd_deploy(self.repo, self.user, write=True)
         self.assertEqual(tool.cmd_deploy(self.repo, self.user, write=False), 0)
 
@@ -304,11 +382,6 @@ class Deployment(unittest.TestCase):
         self.assertEqual(tool.cmd_deploy(self.repo, self.user, write=False), 1)
         self.assertIn("managed", self.printed())
 
-    def test_a_rule_that_apply_would_drop_is_named_first(self):
-        self.write(self.user / "keybindings.json", '[{"key": "f9", "command": "added.in.vscode"}]')
-        tool.cmd_deploy(self.repo, self.user, write=False)
-        self.assertIn("added.in.vscode", self.printed())
-
     def test_the_file_found_at_first_is_kept_once_and_the_last_one_each_time(self):
         self.write(self.user / "settings.json", '{"first": 1}')
         tool.cmd_deploy(self.repo, self.user, write=True)
@@ -318,18 +391,32 @@ class Deployment(unittest.TestCase):
         self.assertEqual(json.loads((backup / "settings.json.original").read_text()), {"first": 1})
         self.assertEqual(json.loads((backup / "settings.json.previous").read_text()), {"second": 2})
 
-    def test_the_mode_of_a_replaced_file_is_kept(self):
+    def test_the_mode_of_a_replaced_file_is_kept_and_a_new_file_is_for_its_owner_only(self):
         self.write(self.user / "settings.json", "{}")
         (self.user / "settings.json").chmod(0o640)
         tool.cmd_deploy(self.repo, self.user, write=True)
         self.assertEqual(stat.S_IMODE((self.user / "settings.json").stat().st_mode), 0o640)
+        self.assertEqual(stat.S_IMODE((self.user / "keybindings.json").stat().st_mode), 0o600)
 
-    def test_an_unreadable_deployed_file_stops_everything_before_any_write(self):
-        self.write(self.user / "keybindings.json", "[ not json")
-        with self.assertRaisesRegex(tool.ConfigError, "keybindings.json"):
-            tool.cmd_deploy(self.repo, self.user, write=True)
-        self.assertFalse((self.user / "settings.json").exists())
-        self.assertEqual((self.user / "keybindings.json").read_text(), "[ not json")
+    def test_a_write_that_fails_leaves_the_file_its_backups_and_the_directory_as_they_were(self):
+        self.write(self.user / "settings.json", '{"first": 1}')
+        tool.cmd_deploy(self.repo, self.user, write=True)
+        self.write(self.user / "settings.json", '{"second": 2}')
+        before = self.files()
+        with mock.patch("os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                tool.cmd_deploy(self.repo, self.user, write=True)
+        self.assertEqual(self.files(), before)
+
+    def test_a_deployed_file_that_cannot_be_read_stops_everything_before_any_write(self):
+        unreadable = {"not JSON": b"[ not json", "not UTF-8": b'["caf\xe9"]'}
+        for reason, content in unreadable.items():
+            with self.subTest(reason=reason):
+                (self.user / "keybindings.json").write_bytes(content)
+                before = self.files()
+                with self.assertRaisesRegex(tool.ConfigError, "keybindings.json"):
+                    tool.cmd_deploy(self.repo, self.user, write=True)
+                self.assertEqual(self.files(), before)
 
     def test_an_empty_deployed_file_is_an_empty_document(self):
         self.write(self.user / "settings.json", "")
@@ -343,6 +430,14 @@ class Deployment(unittest.TestCase):
             tool.cmd_deploy(self.repo, self.user, write=True)
         self.assertTrue((self.user / "settings.json").is_symlink())
 
+    def test_docs_writes_the_generated_files(self):
+        self.write(self.repo / "user/extensions.json", json.dumps(MANIFEST))
+        self.write(self.repo / "user/keybindings.json", RULES)
+        self.assertEqual(tool.cmd_docs(self.repo), 0)
+        for name, text in tool.generated_files(RULES, MANIFEST).items():
+            with self.subTest(file=name):
+                self.assertEqual((self.repo / name).read_text(encoding="utf-8"), text)
+
 
 class Extensions(unittest.TestCase):
     """The tool with a stand-in for `code`, the only stub: the process boundary."""
@@ -350,7 +445,10 @@ class Extensions(unittest.TestCase):
     STAND_IN = """#!/bin/sh
 echo "$*" >> "$STATE/calls"
 case "$1" in
---list-extensions) cat "$STATE/installed" ;;
+--list-extensions)
+    cat "$STATE/installed"
+    exit "$(cat "$STATE/list-status")"
+    ;;
 --install-extension)
     for argument in "$@"; do
         case "$argument" in
@@ -372,6 +470,7 @@ esac
         code.write_text(self.STAND_IN, encoding="utf-8")
         code.chmod(0o755)
         (self.root / "installed").write_text("Some.Keymap\n", encoding="utf-8")
+        (self.root / "list-status").write_text("0", encoding="utf-8")
         environment = {
             "PATH": f"{self.root / 'bin'}{os.pathsep}{os.environ['PATH']}",
             "STATE": str(self.root),
@@ -384,11 +483,15 @@ esac
         (self.root / "repo/user/extensions.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     def calls(self):
-        return (self.root / "calls").read_text(encoding="utf-8").splitlines()
+        calls = self.root / "calls"
+        return calls.read_text(encoding="utf-8").splitlines() if calls.is_file() else []
+
+    def installed(self):
+        return (self.root / "installed").read_text(encoding="utf-8").split()
 
     def test_everything_missing_is_installed_in_one_call(self):
         self.manifest(MANIFEST)
-        self.assertEqual(tool.cmd_extensions(self.root / "repo", ["core", "sql"]), 1)
+        self.assertEqual(tool.cmd_extensions(self.root / "repo", ["core", "sql"]), 0)
         self.assertEqual(
             self.calls(),
             [
@@ -397,6 +500,14 @@ esac
                 "--list-extensions",
             ],
         )
+
+    def test_two_exclusive_extensions_are_never_both_installed(self):
+        self.manifest(MANIFEST)
+        (self.root / "installed").write_text("Some.Keymap\nother.dbt\n", encoding="utf-8")
+        self.assertEqual(tool.cmd_extensions(self.root / "repo", ["core"]), 0)
+        self.assertNotIn("official.dbt", self.installed())
+        tool.cmd_extensions(self.root / "repo", ["core", "sql"])
+        self.assertNotIn("official.dbt", self.installed())
 
     def test_nothing_missing_means_no_install_call_and_success(self):
         self.manifest({"extensions": [{"id": "some.keymap", "group": "core", "purpose": "Keys."}]})
@@ -407,9 +518,18 @@ esac
         self.manifest({"extensions": [{"id": "refused.extension", "group": "core", "purpose": "P."}]})
         self.assertEqual(tool.cmd_extensions(self.root / "repo", ["core"]), 1)
 
-    def test_everything_installed_after_the_call_is_a_success(self):
-        self.manifest({"extensions": [{"id": "new.extension", "group": "core", "purpose": "P."}]})
-        self.assertEqual(tool.cmd_extensions(self.root / "repo", ["core"]), 0)
+    def test_a_listing_that_fails_is_a_failure_and_nothing_is_installed(self):
+        self.manifest(MANIFEST)
+        (self.root / "list-status").write_text("3", encoding="utf-8")
+        with mock.patch("sys.stderr"), self.assertRaises(OSError):
+            tool.cmd_extensions(self.root / "repo", ["core", "sql"])
+        self.assertEqual(self.calls(), ["--list-extensions"])
+
+    def test_an_unknown_group_is_refused_before_vscode_is_run(self):
+        self.manifest(MANIFEST)
+        with self.assertRaisesRegex(tool.UsageError, "nope"):
+            tool.cmd_extensions(self.root / "repo", ["core", "nope"])
+        self.assertEqual(self.calls(), [])
 
     def test_without_the_code_command_the_tool_says_how_to_get_it(self):
         self.manifest(MANIFEST)
@@ -420,13 +540,30 @@ esac
 
 
 class Main(unittest.TestCase):
-    def test_an_invalid_source_is_exit_status_2(self):
+    def status(self, settings: bytes) -> int:
         with tempfile.TemporaryDirectory() as directory:
-            with mock.patch.object(tool, "REPO", Path(directory)), mock.patch("sys.stderr"):
-                (Path(directory) / "user").mkdir()
-                (Path(directory) / "user/settings.json").write_text("{", encoding="utf-8")
-                (Path(directory) / "user/keybindings.json").write_text("[]", encoding="utf-8")
-                self.assertEqual(tool.main(["--user-dir", directory, "status"]), 2)
+            repo = Path(directory)
+            (repo / "user").mkdir()
+            (repo / "user/settings.json").write_bytes(settings)
+            (repo / "user/keybindings.json").write_bytes(b"[]")
+            with (
+                mock.patch.object(tool, "REPO", repo),
+                mock.patch("sys.stderr"),
+                mock.patch("builtins.print"),
+            ):
+                return tool.main(["--user-dir", str(repo / "data/User"), "status"])
+
+    def test_a_source_that_cannot_be_used_is_exit_status_2(self):
+        for reason, settings in {
+            "not JSON": b"{",
+            "not UTF-8": b'{"a": "caf\xe9"}',
+            "an array": b"[]",
+        }.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(self.status(settings), 2)
+
+    def test_something_pending_is_exit_status_1(self):
+        self.assertEqual(self.status(b'{"a": 1}'), 1)
 
 
 if __name__ == "__main__":
