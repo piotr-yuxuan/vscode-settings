@@ -23,7 +23,7 @@ class BindingFindings(unittest.TestCase):
                 "Named and punctuation keys",
                 {"key": "ctrl+alt+= f8 shift+enter", "command": "x"},
             ),
-            ("Keys", "Navigation keys", {"key": "ctrl+home pageup", "command": "y"}),
+            ("Keys", "Navigation keys", {"key": "ctrl+home end", "command": "y"}),
         ]
         self.assertEqual(checks.binding_findings(described), [])
 
@@ -63,6 +63,7 @@ class TerminalFindings(unittest.TestCase):
             "isMac",
             "!editorTextFocus",
             "editorTextFocus || terminalFocus",
+            "editorTextFocus && isMac || terminalFocus",
             "terminalFocus",
         )
         for when in conditions:
@@ -85,7 +86,7 @@ class PrivateFindings(unittest.TestCase):
     def test_public_text_passes(self):
         text = "Clone into ~/src, not /home/<name>. Write to someone@example.org or team@example.com.\n"
         self.assertEqual(
-            checks.private_findings(text + "Acmeism, a macadam road.", ["Acme", "cad"]), []
+            checks.private_findings(text + "Acmeism, a macadam road.", ["=Acme", "=cad"]), []
         )
 
     def test_a_home_directory_path_is_rejected_with_its_line(self):
@@ -98,18 +99,26 @@ class PrivateFindings(unittest.TestCase):
     def test_an_e_mail_address_is_rejected(self):
         self.assertNotEqual(checks.private_findings(f"write to {self.MAIL}", []), [])
 
-    def test_a_denied_term_is_rejected_whatever_its_case_where_no_letter_touches_it(self):
-        for text in (
+    def test_a_denied_term_is_rejected_anywhere_whatever_its_case(self):
+        texts = (
             "at Acme, we",
             "ACME rules",
-            "the acme.example host",
+            "acme.example",
             "acme-corp",
-            "acme_corp",
+            "AcmeCorp",
+            "myacme",
             "x/Acme Corp/y",
-        ):
+        )
+        for text in texts:
             with self.subTest(text=text):
                 self.assertNotEqual(checks.private_findings(text, ["Acme"]), [])
         self.assertNotEqual(checks.private_findings("at Acme Corp today", ["acme corp"]), [])
+
+    def test_a_term_marked_as_a_whole_word_is_rejected_only_where_it_stands_alone(self):
+        for text in ("the CAD file", "cad-export", "a cad."):
+            with self.subTest(text=text):
+                self.assertNotEqual(checks.private_findings(text, ["=cad"]), [])
+        self.assertEqual(checks.private_findings("a macadam road, a cadence", ["=cad"]), [])
 
 
 class DashFindings(unittest.TestCase):

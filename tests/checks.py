@@ -13,7 +13,7 @@ import re
 # The modifiers are those `tool.emacs_notation` can write, which the key reference needs.
 _STROKE = re.compile(
     r"((ctrl|shift|alt|cmd)\+)*"
-    r"([a-z0-9]|f[0-9]{1,2}|enter|escape|space|tab|backspace|delete|insert|home|end|pageup|pagedown"
+    r"([a-z0-9]|f[0-9]{1,2}|enter|escape|space|tab|backspace|delete|home|end"
     r"|up|down|left|right|[`\-=\[\];',./\\])"
 )
 _HOME = re.compile(r"/(?:home|Users)/[A-Za-z0-9_][\w.-]*")
@@ -70,13 +70,15 @@ def terminal_findings(rules: list) -> list:
 def private_findings(text: str, deny: list) -> list:
     """Find values that must not be published: home paths, e-mail addresses, denied terms.
 
-    A denied term matches whatever its case, where no letter or digit touches it.
+    A denied term matches anywhere, whatever its case: a leak cannot be taken back, while a
+    false alarm only costs a rewording. A term written with a leading `=` matches only
+    where no letter or digit touches it, which is what a short acronym needs.
     """
     patterns = [("home directory path", _HOME), ("e-mail address", _EMAIL)]
-    patterns += [
-        ("denied term", re.compile(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", re.I))
-        for term in deny
-    ]
+    for term in deny:
+        word = re.escape(term[1:] if term.startswith("=") else term)
+        alone = rf"(?<![A-Za-z0-9]){word}(?![A-Za-z0-9])" if term.startswith("=") else word
+        patterns.append(("denied term", re.compile(alone, re.I)))
     return [
         f"line {number}: {label} {match.group()!r}"
         for number, line in enumerate(text.splitlines(), 1)
