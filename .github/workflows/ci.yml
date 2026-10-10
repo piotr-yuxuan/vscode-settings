@@ -30,6 +30,11 @@ jobs:
       # v6.0.2
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      # The tests check the Python sources with Ruff when it is installed.
+      - name: Install Ruff (Linux)
+        if: runner.os == 'Linux'
+        run: pipx install ruff==0.16.10
+
       - name: Run the static tests with the system Python
         run: |
           python=python3
