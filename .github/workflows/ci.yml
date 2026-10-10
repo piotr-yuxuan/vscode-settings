@@ -1,0 +1,75 @@
+# Checks of the configuration on Linux and on macOS.
+#
+# static: the tests that need no VS Code, with the Python each system ships.
+# editor: the real VS Code. First the session tests in private directories; then the
+# getting-started tutorial as a newcomer runs it (apply, extensions) on the runner's own
+# VS Code, and the session tests again, which now see every extension.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run the static tests with the system Python
+        run: |
+          python=python3
+          if [ -x /usr/bin/python3 ]; then python=/usr/bin/python3; fi
+          "$python" --version
+          PYTHON="$python" tests/run static
+
+  editor:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install VS Code (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/code.deb" \
+            "https://update.code.visualstudio.com/latest/linux-deb-x64/stable"
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes "$RUNNER_TEMP/code.deb" xvfb
+
+      - name: Install VS Code (macOS)
+        if: runner.os == 'macOS'
+        run: brew install --cask visual-studio-code
+
+      - name: Show the versions of the tools
+        run: |
+          code --version
+          python3 --version
+          git --version
+
+      - name: Start VS Code with the generated configuration, in private directories
+        run: tests/run fast
+
+      - name: Follow the getting-started tutorial on this machine
+        run: |
+          bin/vscode-settings status || true
+          bin/vscode-settings apply
+          bin/vscode-settings extensions
+          bin/vscode-settings status
+          code --list-extensions --show-versions
+
+      - name: Start VS Code as installed, and check every bound command
+        run: VSCODE_SETTINGS_INSTALLED=1 PYTHONPATH=. python3 -m unittest discover -s tests/session -p '*_test.py'
