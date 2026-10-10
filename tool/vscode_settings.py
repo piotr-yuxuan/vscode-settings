@@ -25,8 +25,9 @@ REPO = Path(__file__).resolve().parent.parent
 
 # A string literal comes first in each pattern, so that what it holds is never taken for a
 # comment or a trailing comma.
-_COMMENT = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
-_TRAILING_COMMA = re.compile(r'"(?:\\.|[^"\\])*"|,(?=\s*[\]}])')
+_STRING = r'"(?:\\.|[^"\\])*"'
+_COMMENT = re.compile(_STRING + r"|//[^\n]*|/\*.*?\*/", re.S)
+_TRAILING_COMMA = re.compile(_STRING + r"|,(?=\s*[\]}])")
 _SECTION = re.compile(r"^\s*// == (.+) ==\s*$")
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*\.[A-Za-z0-9][A-Za-z0-9-]*")
 
@@ -58,13 +59,21 @@ def parse_jsonc(text: str, source: str, expect: type | None = None):
     def not_json(constant):
         raise ValueError(f"{constant} is not JSON")
 
+    def finite(text):
+        number = float(text)
+        if number != number or number in (float("inf"), float("-inf")):
+            not_json(text)
+        return number
+
     def keep_strings(match):
         # Comments become spaces, newlines kept, so that an error still names the right line.
         return match.group() if match.group().startswith('"') else re.sub(r"[^\n]", " ", match.group())
 
     strict = _TRAILING_COMMA.sub(keep_strings, _COMMENT.sub(keep_strings, text))
     try:
-        value = json.loads(strict, object_pairs_hook=unique, parse_constant=not_json)
+        value = json.loads(
+            strict, object_pairs_hook=unique, parse_constant=not_json, parse_float=finite
+        )
     except ValueError as error:
         raise ConfigError(f"{source}: {error}") from error
     if expect is not None and not isinstance(value, expect):
@@ -149,6 +158,14 @@ def emacs_notation(key: str) -> str:
     return " ".join(strokes)
 
 
+def check_rule(rule, source: str) -> None:
+    """Refuse a key binding rule that is not an object with a `key` and a `command`, both text."""
+    if not isinstance(rule, dict) or not all(
+        isinstance(rule.get(name), str) for name in ("key", "command")
+    ):
+        raise ConfigError(f"{source}: a rule needs a `key` and a `command`, both text, not {rule!r}")
+
+
 def described_rules(text: str, source: str) -> list:
     """Read the key bindings source as lines: (section, description, rule) for each rule.
 
@@ -165,8 +182,7 @@ def described_rules(text: str, source: str) -> list:
             description.append(stripped[2:].strip())
         elif stripped.startswith("{"):
             rule = parse_jsonc(stripped.rstrip(","), f"{source}:{number}", dict)
-            if not isinstance(rule.get("key"), str) or not isinstance(rule.get("command"), str):
-                raise ConfigError(f"{source}:{number}: a rule needs a `key` and a `command`, both text")
+            check_rule(rule, f"{source}:{number}")
             found.append((section, " ".join(description), rule))
             description = []
         else:
@@ -192,7 +208,10 @@ def manifest_findings(manifest: dict) -> list:
     groups = {str(entry.get("id")).lower(): entry.get("group") for entry in entries}
     if len(groups) != len(entries):
         findings.append("an identifier is listed twice (case is ignored)")
-    for pair in manifest.get("exclusive", []):
+    exclusive = manifest.get("exclusive", [])
+    if not isinstance(exclusive, list):
+        return [*findings, "`exclusive` must be a list of pairs"]
+    for pair in exclusive:
         names = {str(name).lower() for name in pair} if isinstance(pair, list) else set()
         if len(names) != 2 or len(pair) != 2:
             findings.append(f"exclusive {pair!r} must name two different extensions")
@@ -308,12 +327,13 @@ def write_file(path: Path, text: str, backup: Path) -> None:
     """Replace `path` in one step, keeping in `backup` a copy of what it held.
 
     The first content ever replaced stays as `<name>.original`, the latest as
-    `<name>.previous`. A failure leaves the file, its backups and both directories as they
-    were. A replaced file keeps its mode; a new one is readable by its owner only.
+    `<name>.previous`. A failure leaves the file and its backups as they were. A replaced
+    file keeps its mode; a new one is readable by its owner only.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     kept, original = backup / f"{path.name}.kept", backup / f"{path.name}.original"
+    created = [Path(temporary), kept]
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             stream.write(text)
@@ -321,15 +341,16 @@ def write_file(path: Path, text: str, backup: Path) -> None:
             backup.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, kept)
             shutil.copymode(path, temporary)
+            if not original.exists():
+                # Before the replacement: once it is done, that content exists nowhere else.
+                created.append(original)
+                shutil.copy2(kept, original)
         os.replace(temporary, path)
     except BaseException:
-        for leftover in (Path(temporary), kept):
+        for leftover in created:
             leftover.unlink(missing_ok=True)
         raise
     if kept.exists():
-        if not original.exists():
-            shutil.copy2(kept, f"{original}.partial")
-            os.replace(f"{original}.partial", original)
         os.replace(kept, backup / f"{path.name}.previous")
 
 
@@ -339,17 +360,22 @@ def cmd_deploy(repo: Path, user: Path, write: bool) -> int:
     for name in ("settings.json", "keybindings.json"):
         if (user / name).is_symlink():
             raise ConfigError(f"{user / name} is a symbolic link; it is not replaced")
+    sources = {
+        "user/keybindings.json": parse_jsonc(
+            read_text(repo / "user/keybindings.json"), "user/keybindings.json", list
+        ),
+        str(local / "keybindings.json"): read_optional(local / "keybindings.json", list),
+    }
+    for source, rules in sources.items():
+        for rule in rules:
+            check_rule(rule, source)
     plan = deployment_plan(
         (
             parse_jsonc(read_text(repo / "user/settings.json"), "user/settings.json", dict),
             read_optional(local / "settings.json", dict),
             read_optional(user / "settings.json", dict),
         ),
-        (
-            parse_jsonc(read_text(repo / "user/keybindings.json"), "user/keybindings.json", list),
-            read_optional(local / "keybindings.json", list),
-            read_optional(user / "keybindings.json", list),
-        ),
+        (*sources.values(), read_optional(user / "keybindings.json", list)),
     )
     print(f"machine-local directory: {local}" + ("" if local.is_dir() else " (absent)"))
     changed = {name: change for name, change in plan.items() if change[0]}
