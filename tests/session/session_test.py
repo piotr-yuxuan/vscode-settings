@@ -16,6 +16,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -86,15 +87,22 @@ class Session(unittest.TestCase):
                     DISPLAY=f":{display.stdout.readline().strip()}", XDG_SESSION_TYPE="x11"
                 )
                 command[1:1] = ["--ozone-platform=x11", "--disable-gpu"]
+            # A group of its own, so that a deadline ends VS Code and not only its launcher.
+            editor = subprocess.Popen(
+                command,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
+            )
             try:
-                cls.process = subprocess.run(
-                    command, env=environment, capture_output=True, text=True, timeout=240
-                )
-            except subprocess.TimeoutExpired as expired:
-                # Kept as a result, so that the tests fail with what VS Code printed.
-                cls.process = subprocess.CompletedProcess(
-                    command, -1, "", f"timed out: {expired.stderr!r}"
-                )
+                _, errors = editor.communicate(timeout=240)
+            except subprocess.TimeoutExpired:
+                os.killpg(editor.pid, signal.SIGKILL)
+                _, errors = editor.communicate()
+                errors += "\nVS Code was still running after 240 seconds."
+            cls.process = subprocess.CompletedProcess(command, editor.returncode, "", errors)
         results = session / "results.json"
         cls.facts = json.loads(results.read_text(encoding="utf-8")) if results.is_file() else None
 
