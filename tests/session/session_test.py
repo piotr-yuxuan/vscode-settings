@@ -59,7 +59,9 @@ class Session(unittest.TestCase):
             "--disable-updates",
             "--disable-telemetry",
             "--password-store=basic",
-            "--wait",
+            # Either flag keeps `code` running until VS Code has exited. On macOS `--wait`
+            # would wait for ever: it watches a marker file that a test run never deletes.
+            "--verbose" if sys.platform == "darwin" else "--wait",
             str(session / "workspace"),
         ]
         if not INSTALLED:
@@ -84,9 +86,15 @@ class Session(unittest.TestCase):
                     DISPLAY=f":{display.stdout.readline().strip()}", XDG_SESSION_TYPE="x11"
                 )
                 command[1:1] = ["--ozone-platform=x11", "--disable-gpu"]
-            cls.process = subprocess.run(
-                command, env=environment, capture_output=True, text=True, timeout=300
-            )
+            try:
+                cls.process = subprocess.run(
+                    command, env=environment, capture_output=True, text=True, timeout=240
+                )
+            except subprocess.TimeoutExpired as expired:
+                # Kept as a result, so that the tests fail with what VS Code printed.
+                cls.process = subprocess.CompletedProcess(
+                    command, -1, "", f"timed out: {expired.stderr!r}"
+                )
         results = session / "results.json"
         cls.facts = json.loads(results.read_text(encoding="utf-8")) if results.is_file() else None
 
