@@ -1,0 +1,19 @@
+#!/bin/sh
+# tests/run [static|fast|full]
+#
+# static  no VS Code: the tool, the sources, the manifest, the public boundary, the pages
+# fast    static, then the tests that start the real VS Code (none yet: plan 002)
+# full    fast; what must be green before a merge
+#
+# Exit status: 0 passed, 1 a test failed, 2 usage error.
+set -eu
+cd "$(dirname "$0")/.."
+case "${1:-fast}" in
+static | fast | full)
+    exec "${PYTHON:-python3}" -m unittest discover -s tests -t . -p '*_test.py'
+    ;;
+*)
+    echo "usage: tests/run [static|fast|full]" >&2
+    exit 2
+    ;;
+esac
