@@ -65,21 +65,22 @@ class Repository(unittest.TestCase):
             with self.subTest(file=name):
                 self.assertEqual(self.files.get(name), text, "run bin/vscode-settings docs")
 
-    def test_nothing_private_is_tracked(self):
+    def test_nothing_private_is_tracked_in_a_file_or_in_its_name(self):
         machine_local = (
             tool.user_dir(sys.platform, os.environ, Path.home()).parent / "vscode-settings.local"
         )
         deny = machine_local / "deny.txt"
-        terms = deny.read_text(encoding="utf-8").split() if deny.is_file() else []
+        lines = deny.read_text(encoding="utf-8").splitlines() if deny.is_file() else []
+        terms = [line.strip() for line in lines if line.strip()]
         for name, text in self.files.items():
             with self.subTest(file=name):
-                self.assert_no_findings(checks.private_findings(text, terms))
+                self.assert_no_findings(checks.private_findings(f"{name}\n{text}", terms))
 
-    def test_no_file_holds_a_unicode_dash(self):
+    def test_no_file_holds_a_unicode_dash_nor_has_one_in_its_name(self):
         for name, text in self.files.items():
             if name != "LICENSE":
                 with self.subTest(file=name):
-                    self.assert_no_findings(checks.dash_findings(text))
+                    self.assert_no_findings(checks.dash_findings(f"{name}\n{text}"))
 
     def test_every_link_between_pages_leads_somewhere(self):
         pages = {name: text for name, text in self.files.items() if name.endswith(".md")}

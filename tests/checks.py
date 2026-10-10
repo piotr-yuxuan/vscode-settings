@@ -10,15 +10,20 @@ from __future__ import annotations
 import posixpath
 import re
 
+# The modifiers are those `tool.emacs_notation` can write, which the key reference needs.
 _STROKE = re.compile(
-    r"^((ctrl|shift|alt|cmd)\+)*"
-    r"([a-z0-9]|f[0-9]{1,2}|enter|escape|space|tab|backspace|delete|up|down|left|right|[`\-=\[\];',./\\])$"
+    r"((ctrl|shift|alt|cmd)\+)*"
+    r"([a-z0-9]|f[0-9]{1,2}|enter|escape|space|tab|backspace|delete|insert|home|end|pageup|pagedown"
+    r"|up|down|left|right|[`\-=\[\];',./\\])"
 )
-_HOME = re.compile(r"/(?:home|Users)/[a-z][a-z0-9_.-]*")
+_HOME = re.compile(r"/(?:home|Users)/[A-Za-z0-9_][\w.-]*")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _PUBLIC_MAIL = ("@example.com", "@example.org", ".example")
-_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-_CODE = re.compile(r"^```.*?^```|`[^`\n]*`", re.S | re.M)
+_LINK = re.compile(r"""\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+["'(][^)]*)?\s*\)""")
+_FENCED = re.compile(r"^(```|~~~).*?^\1", re.S | re.M)
+_INLINE_CODE = re.compile(r"`[^`\n]*`")
+# The en dash and the em dash, written by number so that this file holds neither.
+_DASHES = (chr(0x2013), chr(0x2014))
 
 
 def binding_findings(described: list) -> list:
@@ -34,8 +39,8 @@ def binding_findings(described: list) -> list:
             continue
         if not description:
             findings.append(f"{key!r}: no description on the line above the rule")
-        if not key.strip() or not all(_STROKE.match(stroke) for stroke in key.split(" ")):
-            findings.append(f"{key!r}: not a key that VS Code reads")
+        if not key or not all(_STROKE.fullmatch(stroke) for stroke in key.split(" ")):
+            findings.append(f"{key!r}: not a key that this repository can read and document")
         identity = (key, command) if command.startswith("-") else (key, rule.get("when", ""))
         if identity in seen:
             findings.append(f"{key!r}: an earlier rule has the same key and the same condition")
@@ -44,24 +49,32 @@ def binding_findings(described: list) -> list:
 
 
 def terminal_findings(rules: list) -> list:
-    """Find the rules that would take `C-c` or `C-x` away from the shell in the terminal."""
-    return [
-        f"{rule['key']!r}: starts with ctrl+c or ctrl+x and is not switched off in the terminal"
-        for rule in rules
-        if rule["key"].split(" ")[0] in ("ctrl+c", "ctrl+x")
-        and not rule["command"].startswith("-")
-        and not re.search(r"!terminalFocus|editorTextFocus", rule.get("when", ""))
-    ]
+    """Find the rules that would take `C-c` or `C-x` away from the shell in the terminal.
+
+    A rule is known to be off in the terminal when its condition is a conjunction that
+    holds `!terminalFocus` or `editorTextFocus`; with an `||` nothing is known.
+    """
+    findings = []
+    for rule in rules:
+        if rule["key"].split(" ")[0] not in ("ctrl+c", "ctrl+x") or rule["command"].startswith("-"):
+            continue
+        when = rule.get("when", "")
+        conjuncts = {part.strip() for part in when.split("&&")}
+        if "||" in when or not conjuncts & {"!terminalFocus", "editorTextFocus"}:
+            findings.append(
+                f"{rule['key']!r}: starts with ctrl+c or ctrl+x and is not off in the terminal"
+            )
+    return findings
 
 
 def private_findings(text: str, deny: list) -> list:
     """Find values that must not be published: home paths, e-mail addresses, denied terms.
 
-    A denied term matches as a whole word, with its case.
+    A denied term matches whatever its case, where no letter or digit touches it.
     """
     patterns = [("home directory path", _HOME), ("e-mail address", _EMAIL)]
     patterns += [
-        ("denied term", re.compile(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])"))
+        ("denied term", re.compile(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", re.I))
         for term in deny
     ]
     return [
@@ -78,19 +91,20 @@ def dash_findings(text: str) -> list:
     return [
         f"line {number}: Unicode dash"
         for number, line in enumerate(text.splitlines(), 1)
-        if "\u2013" in line or "\u2014" in line
+        if any(dash in line for dash in _DASHES)
     ]
 
 
 def link_findings(page: str, pages: dict, tracked: set) -> list:
-    """Find the relative links of a Markdown page that lead nowhere.
+    """Find the links of a Markdown page that lead nowhere in the repository.
 
     `pages` maps each tracked Markdown path to its text, `tracked` holds every tracked path.
-    Links inside code are not links. A fragment must be a heading of the target page.
+    A link is relative to its page; only a link with a scheme, such as `https:`, leaves the
+    repository. Links inside code are not links. A fragment must be a heading of the target.
     """
     findings = []
-    for target in _LINK.findall(_CODE.sub("", pages[page])):
-        if re.match(r"[a-z][a-z0-9+.-]*:|[/~]", target):
+    for target in _LINK.findall(_INLINE_CODE.sub("", _FENCED.sub("", pages[page]))):
+        if re.match(r"[a-z][a-z0-9+.-]*:", target):
             continue
         relative, _, fragment = target.partition("#")
         resolved = (
@@ -99,7 +113,7 @@ def link_findings(page: str, pages: dict, tracked: set) -> list:
         if resolved not in tracked and not any(path.startswith(f"{resolved}/") for path in tracked):
             findings.append(f"{page}: link to {target!r}, which is not tracked")
         elif fragment and resolved in pages:
-            headings = re.findall(r"^#+ (.+)$", _CODE.sub("", pages[resolved]), re.M)
+            headings = re.findall(r"^#+ (.+)$", _FENCED.sub("", pages[resolved]), re.M)
             anchors = {
                 re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
                 for heading in headings
