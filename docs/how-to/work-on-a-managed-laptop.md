@@ -69,8 +69,10 @@ was not found; nothing else breaks.
   address, the path of the dbt binary, a profile name, words for the spelling dictionary.
   `local.example/macos/settings.json` lists the usual ones.
 - Write the names that must never be published, one per line, in `deny.txt` in the same
-  directory. The static tests then fail if one of them appears in a tracked file or in its
-  name, whatever its case. The list stays on your machine: the tests of GitHub Actions do
+  directory. The static tests then fail if one of them appears anywhere in a tracked file
+  or in its name, whatever its case and even inside a longer word. For a short acronym
+  that would match half the dictionary, start the line with `=`: it is then found only
+  where it stands alone. The list stays on your machine: the tests of GitHub Actions do
   not have it.
 - Do not commit to this repository from the work machine: its default git identity may be
   the employer's, and one commit would put that address in a public history. Take notes,

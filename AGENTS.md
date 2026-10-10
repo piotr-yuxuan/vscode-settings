@@ -81,7 +81,8 @@ Write instead: `~` and paths relative to the repository; `example.com`, `example
 machine-local directory is the owner's: read it only to diagnose, and never copy from it.
 
 `tests/run static` includes the boundary check. It also reads the terms of `deny.txt` in the
-machine-local directory when that file exists, one term per line. That list exists on the
+machine-local directory when that file exists, one term per line: a term matches anywhere,
+whatever its case, and one that starts with `=` only as a whole word. That list exists on the
 owner's machine only, so the runners of GitHub Actions check home paths and e-mail
 addresses, not the owner's terms. When in doubt, leave the value out and ask.
 
