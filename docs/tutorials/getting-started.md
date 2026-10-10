@@ -5,9 +5,10 @@ on NixOS. It takes about twenty minutes, most of it waiting for extensions. At t
 Code has the settings, the keys and the core extensions, and you know how to change them.
 [A first day with this configuration](first-day.md) comes next.
 
-Untested: on a Mac managed by an employer. GitHub Actions runs steps 2 to 5 on a plain macOS
-machine at every push, so the commands themselves are known to work there; what a managed
-machine adds is in [Work on a managed laptop](../how-to/work-on-a-managed-laptop.md).
+Untested: on a Mac managed by an employer, and step 4 on any Mac. GitHub Actions runs
+`status`, `apply` and `extensions` on a plain macOS machine at every push, then starts VS
+Code there, so those commands are known to work; what a managed machine adds is in
+[Work on a managed laptop](../how-to/work-on-a-managed-laptop.md).
 
 ## 1. Check what you need
 
@@ -72,13 +73,15 @@ bin/vscode-settings extensions
 
 `apply` writes `settings.json` and `keybindings.json` in VS Code's user directory. The
 settings you already had are still there: `apply` only sets the keys this repository
-manages. The files it replaced are in the `backup` directory of the machine-local directory:
+manages. The file it writes is plain JSON, so comments you had in yours are not carried
+over. The files it replaced are in the `backup` directory of the machine-local directory:
 `settings.json.original` is what was there the first time, `settings.json.previous` what
 was there the last time.
 
 `extensions` installs the core group in one call and prints a line for each extension:
 `installed`, or `STILL MISSING` when VS Code refused it. Its exit status is 0 when nothing
-is missing.
+is missing. An extension that is exclusive with one you have is left out, and said so:
+that is not a failure.
 
 Restart VS Code. Then check:
 

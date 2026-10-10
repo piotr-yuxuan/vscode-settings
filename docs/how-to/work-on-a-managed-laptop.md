@@ -69,7 +69,9 @@ was not found; nothing else breaks.
   address, the path of the dbt binary, a profile name, words for the spelling dictionary.
   `local.example/macos/settings.json` lists the usual ones.
 - Write the names that must never be published, one per line, in `deny.txt` in the same
-  directory. The static tests then fail if one of them appears in a tracked file.
+  directory. The static tests then fail if one of them appears in a tracked file or in its
+  name, whatever its case. The list stays on your machine: the tests of GitHub Actions do
+  not have it.
 - Do not commit to this repository from the work machine: its default git identity may be
   the employer's, and one commit would put that address in a public history. Take notes,
   and make the change from your own machine.
@@ -95,11 +97,11 @@ Each answer changes one thing here. Until you have it, the defaults stand.
 
 | Ask | The answer changes |
 |---|---|
-| Which dbt extension do you use, and is every project on dbt v2? | The core group has the official `dbtLabsInc.dbt`. For dbt Core 1.x with Power User, uninstall it and run `bin/vscode-settings extensions sql`; the two are never installed together |
+| Which dbt extension do you use, and is every project on dbt v2? | The core group has the official `dbtLabsInc.dbt`. For dbt Core 1.x with Power User, uninstall it (`code --uninstall-extension dbtLabsInc.dbt`) and run `bin/vscode-settings extensions sql`. The two are never installed together: from then on `extensions` leaves the official one out |
 | How is SQL linted and formatted: SQLFluff, sqlfmt, or dbt's own linter? | Install `sqlfluff.vscode-sqlfluff` from the `sql` group, or set `dbt.lsp.linter.enabled` to `true` in the machine-local settings; never both |
 | Do the checks enforce Ruff, or Black and isort? | See *Before your first save* in [the first-day tutorial](../tutorials/first-day.md); for Black, install the `python-team` group |
 | Which type checker gates a merge, and where is it configured? | `basedpyright.analysis.typeCheckingMode` in the machine-local settings, from `all` down to `standard` |
-| Terraform or OpenTofu? | The core group has `HashiCorp.terraform`; for OpenTofu, uninstall it and run `bin/vscode-settings extensions cloud` |
+| Terraform or OpenTofu? | The core group has `HashiCorp.terraform`. For OpenTofu, uninstall it (`code --uninstall-extension HashiCorp.terraform`) and run `bin/vscode-settings extensions cloud`, which installs the OpenTofu extension with the rest of that group |
 | How do you sign in to Snowflake? | Nothing here; the connection is in Snowflake's own `connections.toml`, outside this repository |
 | How is the cluster reached, and who writes Helm charts? | Install the `cloud` group, which needs `kubectl`, `helm` and the Azure `kubelogin` |
 | Do the repositories commit a `.vscode` directory? | Their settings win over these for that repository; read them before changing anything |
