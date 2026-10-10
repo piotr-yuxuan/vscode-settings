@@ -92,6 +92,10 @@ jobs:
           VSCODE_SETTINGS_INSTALLED=1 PYTHONPATH=. python3 -m unittest discover -s tests/session -p '*_test.py' \
             2>&1 | tee "$RUNNER_TEMP/3-installed.log"
 
+      - name: Find VS Code without the code command on PATH (macOS)
+        if: runner.os == 'macOS'
+        run: PATH=/usr/bin:/bin bin/vscode-settings extensions 2>&1 | tee "$RUNNER_TEMP/4-no-shim.log"
+
       # The logs of a run can only be read by someone signed in; annotations are public.
       - name: Show the end of each log as an annotation, when a step failed
         if: failure()
