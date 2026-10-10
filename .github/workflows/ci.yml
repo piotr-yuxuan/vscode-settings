@@ -52,7 +52,11 @@ jobs:
 
       - name: Install VS Code (macOS)
         if: runner.os == 'macOS'
-        run: brew install --cask visual-studio-code
+        # Without the second command the first start would wait for someone to confirm, in a
+        # dialog, that an application downloaded from the Internet may be opened.
+        run: |
+          brew install --cask visual-studio-code
+          xattr -dr com.apple.quarantine "/Applications/Visual Studio Code.app" || true
 
       - name: Show the versions of the tools
         run: |
