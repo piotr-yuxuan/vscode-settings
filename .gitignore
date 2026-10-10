@@ -1,0 +1,14 @@
+/docs/work/
+
+# One worktree per plan (AGENTS.md, Process).
+/.worktree/
+
+# Temporary files of the checkout or worktree in use.
+/tmp/
+
+# The private companion of AGENTS.md.
+/AGENTS.local.md
+
+# Python.
+__pycache__/
+*.pyc
