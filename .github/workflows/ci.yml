@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    # With this shell a step fails when any command of a pipeline fails.
+    shell: bash
+
 jobs:
   static:
     strategy:
@@ -65,15 +70,28 @@ jobs:
           git --version
 
       - name: Start VS Code with the generated configuration, in private directories
-        run: tests/run fast
+        run: tests/run fast 2>&1 | tee "$RUNNER_TEMP/1-private.log"
 
       - name: Follow the getting-started tutorial on this machine
         run: |
-          bin/vscode-settings status || true
-          bin/vscode-settings apply
-          bin/vscode-settings extensions
-          bin/vscode-settings status
-          code --list-extensions --show-versions
+          {
+            bin/vscode-settings status || true
+            bin/vscode-settings apply
+            bin/vscode-settings extensions
+            bin/vscode-settings status
+            code --list-extensions --show-versions
+          } 2>&1 | tee "$RUNNER_TEMP/2-tutorial.log"
 
       - name: Start VS Code as installed, and check every bound command
-        run: VSCODE_SETTINGS_INSTALLED=1 PYTHONPATH=. python3 -m unittest discover -s tests/session -p '*_test.py'
+        run: |
+          VSCODE_SETTINGS_INSTALLED=1 PYTHONPATH=. python3 -m unittest discover -s tests/session -p '*_test.py' \
+            2>&1 | tee "$RUNNER_TEMP/3-installed.log"
+
+      # The logs of a run can only be read by someone signed in; annotations are public.
+      - name: Show the end of each log as an annotation, when a step failed
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/*.log; do
+            [ -f "$log" ] || continue
+            tail -c 6000 "$log" | python3 -c 'import sys; print("::error title=" + sys.argv[1] + "::" + sys.stdin.read().replace("%", "%25").replace("\r", "").replace("\n", "%0A"))' "$(basename "$log")"
+          done
