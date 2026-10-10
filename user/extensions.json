@@ -1,0 +1,56 @@
+{
+  "exclusive": [
+    ["dbtLabsInc.dbt", "innoverio.vscode-dbt-power-user"],
+    ["HashiCorp.terraform", "OpenTofu.vscode-opentofu"]
+  ],
+  "extensions": [
+    { "id": "tuttieee.emacs-mcx", "group": "core", "purpose": "Emacs keys: movement, kill ring, mark, C-x and M-x." },
+    { "id": "kahole.magit", "group": "core", "purpose": "edamagit: the Magit status, staging and commit keys." },
+    { "id": "EditorConfig.EditorConfig", "group": "core", "purpose": "The project's .editorconfig decides indentation and whitespace, as in Emacs." },
+    { "id": "ms-python.python", "group": "core", "purpose": "Interpreter and environment discovery, the test explorer; it brings Pylance, which stays inert." },
+    { "id": "ms-python.debugpy", "group": "core", "purpose": "The Python debugger, the engine Emacs uses." },
+    { "id": "detachhead.basedpyright", "group": "core", "purpose": "The only Python language server, the one Emacs uses." },
+    { "id": "charliermarsh.ruff", "group": "core", "purpose": "Python lint and format, driven by the project's configuration." },
+    { "id": "dbtLabsInc.dbt", "group": "core", "purpose": "dbt v2: navigation, lineage, preview, build." },
+    { "id": "snowflake.snowflake-vsc", "group": "core", "purpose": "Run SQL against Snowflake and browse its objects." },
+    { "id": "HashiCorp.terraform", "group": "core", "purpose": "Terraform: language server, validation, terraform fmt." },
+    { "id": "redhat.vscode-yaml", "group": "core", "purpose": "YAML with schemas: dbt, Airflow, GitHub Actions, Kubernetes." },
+    { "id": "tamasfe.even-better-toml", "group": "core", "purpose": "TOML, for pyproject.toml." },
+    { "id": "likec4.likec4-vscode", "group": "core", "purpose": "LikeC4 architecture models with a live diagram; needs Node 22.22 or later on PATH." },
+    { "id": "DavidAnson.vscode-markdownlint", "group": "core", "purpose": "Markdown lint." },
+    { "id": "streetsidesoftware.code-spell-checker", "group": "core", "purpose": "Spelling, offline." },
+    { "id": "streetsidesoftware.code-spell-checker-british-english", "group": "core", "purpose": "The British English dictionary." },
+
+    { "id": "sqlfluff.vscode-sqlfluff", "group": "sql", "purpose": "SQL lint and format, if the team uses SQLFluff; needs the sqlfluff program." },
+    { "id": "innoverio.vscode-dbt-power-user", "group": "sql", "purpose": "The alternative to the official dbt extension, for dbt Core 1.x; it brings an AI companion to switch off." },
+    { "id": "mechatroner.rainbow-csv", "group": "sql", "purpose": "CSV columns in colours: seeds and extracts." },
+
+    { "id": "ms-python.black-formatter", "group": "python-team", "purpose": "Black, if the team's checks enforce it." },
+    { "id": "ms-python.isort", "group": "python-team", "purpose": "isort, with Black." },
+    { "id": "ms-toolsai.jupyter", "group": "python-team", "purpose": "Notebooks, if the team keeps any." },
+
+    { "id": "ms-kubernetes-tools.vscode-kubernetes-tools", "group": "cloud", "purpose": "Kubernetes clusters and manifests; needs kubectl and helm." },
+    { "id": "ms-kubernetes-tools.vscode-aks-tools", "group": "cloud", "purpose": "Azure Kubernetes Service; needs the Azure kubelogin." },
+    { "id": "ms-azuretools.vscode-azureresourcegroups", "group": "cloud", "purpose": "Browse Azure resources." },
+    { "id": "ms-azuretools.vscode-containers", "group": "cloud", "purpose": "Containers and images; needs Docker or Podman." },
+    { "id": "OpenTofu.vscode-opentofu", "group": "cloud", "purpose": "Replaces the Terraform extension if the team runs OpenTofu." },
+
+    { "id": "GitHub.vscode-pull-request-github", "group": "github", "purpose": "Review and create pull requests." },
+    { "id": "GitHub.vscode-github-actions", "group": "github", "purpose": "Validate and watch workflows." },
+
+    { "id": "ltex-plus.vscode-ltex-plus", "group": "prose", "purpose": "Grammar with LanguageTool, as in Emacs; heavy, it runs a Java server." },
+    { "id": "streetsidesoftware.code-spell-checker-french", "group": "prose", "purpose": "The French dictionary." },
+    { "id": "dnut.rewrap-revived", "group": "prose", "purpose": "M-q: rewrap a paragraph or a comment." },
+    { "id": "bpruitt-goddard.mermaid-markdown-syntax-highlighting", "group": "prose", "purpose": "Highlighting for Mermaid; the preview is built into VS Code." },
+
+    { "id": "usernamehw.errorlens", "group": "look", "purpose": "Diagnostics at the end of the line." },
+    { "id": "ms-vscode.Theme-TomorrowKit", "group": "look", "purpose": "The Tomorrow and Tomorrow Night themes of the Emacs configuration." },
+
+    { "id": "timonwong.shellcheck", "group": "shell-nix", "purpose": "Shell script lint." },
+    { "id": "mkhl.shfmt", "group": "shell-nix", "purpose": "Shell script format; needs shfmt." },
+    { "id": "mkhl.direnv", "group": "shell-nix", "purpose": "Load a project's direnv environment into the editor." },
+    { "id": "jnoortheen.nix-ide", "group": "shell-nix", "purpose": "Nix, with nixd." },
+
+    { "id": "anthropic.claude-code", "group": "ai", "purpose": "Claude Code in the editor; on a work machine, only with the employer's agreement." }
+  ]
+}

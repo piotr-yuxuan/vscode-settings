@@ -1,0 +1,182 @@
+// Key bindings added on top of the Awesome Emacs Keymap extension (tuttieee.emacs-mcx),
+// which already gives C-x C-f, C-x b, C-x k, C-x o, C-x 0, C-x 2, C-x 3, C-x C-s, M-x, C-g,
+// C-s, the kill ring, the mark, M-. and M-,.
+//
+// Format, checked by the tests: one rule per line; the comment just above a rule is its
+// description in docs/reference/keybindings.md; `// == Title ==` starts a section. A later
+// rule wins over an earlier one on the same key when its `when` holds. A command that starts
+// with "-" removes a binding. Every rule that starts with ctrl+c or ctrl+x is switched off
+// in the terminal, so that the shell keeps C-c and C-x C-e.
+//
+// The file is valid for VS Code as it stands: it can be pasted into "Preferences: Open
+// Keyboard Shortcuts (JSON)" on a machine where the tool cannot run.
+[
+  // == Keys given back ==
+
+  // Keep M-x for the Command Palette: Magit status moves to C-x g
+  { "key": "alt+x g", "command": "-magit.status" },
+  // Keep M-x for the Command Palette: the Magit menu moves to C-x M-g
+  { "key": "alt+x ctrl+g", "command": "-magit.dispatch" },
+  // Keep M-x for the Command Palette: the Magit file menu moves to C-c M-g
+  { "key": "alt+x alt+g", "command": "-magit.file-popup" },
+  // Keep M-. for go to definition: Snowflake object details move to C-c C-d
+  { "key": "alt+.", "command": "-snowflake.objectDetails" },
+  // The Snowflake extension must not run every Python file
+  { "key": "ctrl+enter", "command": "-snowflake.executePythonFile" },
+  // The same on macOS
+  { "key": "cmd+enter", "command": "-snowflake.executePythonFile" },
+  // Linux: C-q must not quit VS Code
+  { "key": "ctrl+q", "command": "-workbench.action.quit" },
+  // Linux: in the terminal, C-g reaches the shell
+  { "key": "ctrl+g", "command": "-workbench.action.terminal.goToRecentDirectory" },
+  // In the terminal, C-y reaches the shell, which yanks what C-k killed
+  { "key": "ctrl+y", "command": "-workbench.action.terminal.paste" },
+
+  // == Git ==
+
+  // Magit status of the repository
+  { "key": "ctrl+x g", "command": "magit.status", "when": "!terminalFocus" },
+  // Magit menu of every command
+  { "key": "ctrl+x alt+g", "command": "magit.dispatch", "when": "!terminalFocus" },
+  // Magit menu for the current file
+  { "key": "ctrl+c alt+g", "command": "magit.file-popup", "when": "editorTextFocus" },
+  // Go to the next change in the file
+  { "key": "ctrl+c g n", "command": "workbench.action.editor.nextChange", "when": "editorTextFocus" },
+  // Go to the previous change in the file
+  { "key": "ctrl+c g p", "command": "workbench.action.editor.previousChange", "when": "editorTextFocus" },
+  // Stage the selected lines
+  { "key": "ctrl+c g s", "command": "git.stageSelectedRanges", "when": "editorTextFocus" },
+  // Revert the selected lines
+  { "key": "ctrl+c g r", "command": "git.revertSelectedRanges", "when": "editorTextFocus" },
+  // Show the next change in place, with what it replaced
+  { "key": "ctrl+c g d", "command": "editor.action.dirtydiff.next", "when": "editorTextFocus" },
+
+  // == Files and windows ==
+
+  // Open a recent file or folder
+  { "key": "ctrl+x f", "command": "workbench.action.openRecent", "when": "!terminalFocus" },
+  // Keep one window: the files of the other groups stay open in it
+  { "key": "ctrl+x 1", "command": "workbench.action.joinAllGroups", "when": "!terminalFocus" },
+  // Go to the previous window
+  { "key": "ctrl+x shift+o", "command": "workbench.action.focusPreviousGroup", "when": "!terminalFocus" },
+  // Go to the next window
+  { "key": "alt+o", "command": "workbench.action.focusNextGroup", "when": "!terminalFocus" },
+  // From the terminal, go back to the editor
+  { "key": "alt+o", "command": "workbench.action.focusActiveEditorGroup", "when": "terminalFocus" },
+  // Go to the file tree
+  { "key": "ctrl+x d", "command": "workbench.view.explorer", "when": "!terminalFocus" },
+  // Show the current file in the file tree
+  { "key": "ctrl+x ctrl+j", "command": "workbench.files.action.showActiveFileInExplorer", "when": "!terminalFocus" },
+  // Show or hide the side bar
+  { "key": "f8", "command": "workbench.action.toggleSidebarVisibility" },
+  // Go to the outline of the file's symbols
+  { "key": "f9", "command": "outline.focus" },
+
+  // == Search and navigation ==
+
+  // Search the project as you type, with a preview of each match
+  { "key": "ctrl+c s r", "command": "workbench.action.quickTextSearch", "when": "!terminalFocus" },
+  // Search the project in the search view, where matches can be replaced
+  { "key": "ctrl+c s g", "command": "workbench.action.findInFiles", "when": "!terminalFocus" },
+  // Find a file of the project by name
+  { "key": "ctrl+c s f", "command": "workbench.action.quickOpen", "when": "!terminalFocus" },
+  // Jump to a symbol of the file
+  { "key": "alt+g i", "command": "workbench.action.gotoSymbol", "when": "editorTextFocus" },
+
+  // == Help ==
+
+  // Show the documentation of the symbol at point
+  { "key": "ctrl+h ctrl+d", "command": "editor.action.showHover", "when": "editorTextFocus" },
+  // Open the Keyboard Shortcuts editor, where a key can be recorded and looked up
+  { "key": "ctrl+h k", "command": "workbench.action.openGlobalKeybindings", "when": "editorTextFocus" },
+  // List the key bindings of this file
+  { "key": "ctrl+h b", "command": "workbench.action.openGlobalKeybindings", "when": "editorTextFocus", "args": "@source:user" },
+
+  // == Editing ==
+
+  // Extend the selection to the enclosing expression
+  { "key": "ctrl+=", "command": "editor.action.smartSelect.expand", "when": "editorTextFocus" },
+  // Shrink the selection back
+  { "key": "ctrl+alt+=", "command": "editor.action.smartSelect.shrink", "when": "editorTextFocus" },
+  // Pick from the kill ring
+  { "key": "alt+y", "command": "emacs-mcx.browseKillRing", "when": "editorTextFocus && !editorReadonly" },
+  // Format the file, or the selection's file, now
+  { "key": "ctrl+c r", "command": "editor.action.formatDocument", "when": "editorTextFocus && !editorReadonly" },
+
+  // == Terminal ==
+
+  // Show the terminal
+  { "key": "ctrl+c t", "command": "workbench.action.terminal.toggleTerminal", "when": "!terminalFocus" },
+  // macOS: send M-c to the shell (change directory with fzf), since Option types a character
+  { "key": "alt+c", "command": "workbench.action.terminal.sendSequence", "when": "terminalFocus && isMac", "args": { "text": "\u001bc" } },
+  // macOS: send M-d to the shell (kill the next word)
+  { "key": "alt+d", "command": "workbench.action.terminal.sendSequence", "when": "terminalFocus && isMac", "args": { "text": "\u001bd" } },
+
+  // == Folding ==
+
+  // Fold or unfold at point
+  { "key": "ctrl+c z z", "command": "editor.toggleFold", "when": "editorTextFocus" },
+  // Fold at point
+  { "key": "ctrl+c z c", "command": "editor.fold", "when": "editorTextFocus" },
+  // Unfold at point
+  { "key": "ctrl+c z o", "command": "editor.unfold", "when": "editorTextFocus" },
+  // Unfold at point and everything inside
+  { "key": "ctrl+c z shift+o", "command": "editor.unfoldRecursively", "when": "editorTextFocus" },
+  // Unfold the whole file
+  { "key": "ctrl+c z a", "command": "editor.unfoldAll", "when": "editorTextFocus" },
+  // Fold the whole file
+  { "key": "ctrl+c z shift+a", "command": "editor.foldAll", "when": "editorTextFocus" },
+
+  // == Tests ==
+
+  // Run the test at point
+  { "key": "ctrl+c k t", "command": "testing.runAtCursor", "when": "editorTextFocus" },
+  // Run the tests of the file
+  { "key": "ctrl+c k f", "command": "testing.runCurrentFile", "when": "editorTextFocus" },
+  // Run every test
+  { "key": "ctrl+c k a", "command": "testing.runAll", "when": "editorTextFocus" },
+  // Run the last run again
+  { "key": "ctrl+c k l", "command": "testing.reRunLastRun", "when": "editorTextFocus" },
+  // Run the test at point again each time a file is saved
+  { "key": "ctrl+c k w", "command": "testing.toggleContinuousRunForTest", "when": "editorTextFocus" },
+  // In a dbt project: the menu to build, run or test the model
+  { "key": "ctrl+c k k", "command": "dbt.openBuildMenu", "when": "editorTextFocus && isDbtWorkspace" },
+  // In a dbt model: run the tests of the model
+  { "key": "ctrl+c k t", "command": "dbt.testModel", "when": "editorTextFocus && isDbtWorkspace && isSqlFile" },
+
+  // == Debugger ==
+
+  // Start debugging
+  { "key": "ctrl+c d d", "command": "workbench.action.debug.start", "when": "editorTextFocus && !inDebugMode" },
+  // Set or remove a breakpoint on the line
+  { "key": "ctrl+c d b", "command": "editor.debug.action.toggleBreakpoint", "when": "editorTextFocus" },
+  // Continue
+  { "key": "ctrl+c d c", "command": "workbench.action.debug.continue", "when": "editorTextFocus && inDebugMode" },
+  // Step to the next line
+  { "key": "ctrl+c d n", "command": "workbench.action.debug.stepOver", "when": "editorTextFocus && inDebugMode" },
+  // Step into the call
+  { "key": "ctrl+c d i", "command": "workbench.action.debug.stepInto", "when": "editorTextFocus && inDebugMode" },
+  // Step out of the function
+  { "key": "ctrl+c d o", "command": "workbench.action.debug.stepOut", "when": "editorTextFocus && inDebugMode" },
+  // Evaluate the selection in the debug console
+  { "key": "ctrl+c d e", "command": "editor.debug.action.selectionToRepl", "when": "editorTextFocus && inDebugMode" },
+
+  // == Run what is in front of you ==
+
+  // Snowflake SQL: run the statement at point
+  { "key": "ctrl+c ctrl+c", "command": "snowflake.executeStatements", "when": "editorTextFocus && editorLangId == 'snowflake-sql' && !notebookCellListFocused" },
+  // Snowflake SQL: run every statement of the file
+  { "key": "ctrl+c ctrl+b", "command": "snowflake.executeAllStatements", "when": "editorTextFocus && editorLangId == 'snowflake-sql'" },
+  // Snowflake SQL: describe the object at point
+  { "key": "ctrl+c ctrl+d", "command": "snowflake.objectDetails", "when": "editorTextFocus && editorLangId == 'snowflake-sql'" },
+  // Snowflake SQL: the key a colleague uses runs the statement, not a dbt preview
+  { "key": "ctrl+enter", "command": "snowflake.executeStatements", "when": "!isMac && editorTextFocus && editorLangId == 'snowflake-sql' && !notebookCellListFocused" },
+  // The same on macOS
+  { "key": "cmd+enter", "command": "snowflake.executeStatements", "when": "isMac && editorTextFocus && editorLangId == 'snowflake-sql' && !notebookCellListFocused" },
+  // dbt model: preview the result of the model
+  { "key": "ctrl+c ctrl+c", "command": "dbt.previewFile", "when": "editorTextFocus && isDbtWorkspace && isSqlFile && editorLangId != 'snowflake-sql'" },
+  // LikeC4: open the diagram
+  { "key": "ctrl+c ctrl+c", "command": "likec4.open-preview", "when": "editorTextFocus && editorLangId == 'likec4'" },
+  // Markdown: open the preview beside the text
+  { "key": "ctrl+c ctrl+c", "command": "markdown.showPreviewToSide", "when": "editorTextFocus && editorLangId == 'markdown'" }
+]

@@ -1,0 +1,106 @@
+# Checks of the configuration on Linux and on macOS.
+#
+# static: the tests that need no VS Code, with the Python each system ships.
+# editor: the real VS Code. First the session tests in private directories; then the
+# getting-started tutorial as a newcomer runs it (apply, extensions) on the runner's own
+# VS Code, and the session tests again, which now see every extension.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # With this shell a step fails when any command of a pipeline fails.
+    shell: bash
+
+jobs:
+  static:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      # The tests check the Python sources with Ruff when it is installed.
+      - name: Install Ruff (Linux)
+        if: runner.os == 'Linux'
+        run: pipx install ruff==0.16.10
+
+      - name: Run the static tests with the system Python
+        run: |
+          python=python3
+          if [ -x /usr/bin/python3 ]; then python=/usr/bin/python3; fi
+          "$python" --version
+          PYTHON="$python" tests/run static
+
+  editor:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install VS Code (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/code.deb" \
+            "https://update.code.visualstudio.com/latest/linux-deb-x64/stable"
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes "$RUNNER_TEMP/code.deb" xvfb
+
+      - name: Install VS Code (macOS)
+        if: runner.os == 'macOS'
+        # Without the second command the first start would wait for someone to confirm, in a
+        # dialog, that an application downloaded from the Internet may be opened.
+        run: |
+          brew install --cask visual-studio-code
+          xattr -dr com.apple.quarantine "/Applications/Visual Studio Code.app" || true
+
+      - name: Show the versions of the tools
+        run: |
+          code --version
+          python3 --version
+          git --version
+
+      - name: Start VS Code with the generated configuration, in private directories
+        run: tests/run fast 2>&1 | tee "$RUNNER_TEMP/1-private.log"
+
+      - name: Follow the getting-started tutorial on this machine
+        run: |
+          {
+            bin/vscode-settings status || true
+            bin/vscode-settings apply
+            bin/vscode-settings extensions
+            bin/vscode-settings status
+            code --list-extensions --show-versions
+          } 2>&1 | tee "$RUNNER_TEMP/2-tutorial.log"
+
+      - name: Start VS Code as installed, and check every bound command
+        run: |
+          VSCODE_SETTINGS_INSTALLED=1 PYTHONPATH=. python3 -m unittest discover -s tests/session -p '*_test.py' \
+            2>&1 | tee "$RUNNER_TEMP/3-installed.log"
+
+      - name: Find VS Code without the code command on PATH (macOS)
+        if: runner.os == 'macOS'
+        run: PATH=/usr/bin:/bin bin/vscode-settings extensions 2>&1 | tee "$RUNNER_TEMP/4-no-shim.log"
+
+      # The logs of a run can only be read by someone signed in; annotations are public.
+      - name: Show the end of each log as an annotation, when a step failed
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/*.log; do
+            [ -f "$log" ] || continue
+            tail -c 6000 "$log" | python3 -c 'import sys; print("::error title=" + sys.argv[1] + "::" + sys.stdin.read().replace("%", "%25").replace("\r", "").replace("\n", "%0A"))' "$(basename "$log")"
+          done

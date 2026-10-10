@@ -1,0 +1,17 @@
+// Example of machine-local key bindings for a Mac.
+//
+// Copy it, as keybindings.json, into the machine-local directory that
+// `bin/vscode-settings status` prints, and remove the comment marks of the lines you
+// need. Its rules come after those of user/keybindings.json, so they win.
+// Untested: derived from the keymaps of VS Code and of the extensions, never pressed on a Mac.
+[
+  // On a Mac, Option types characters, and a rule on alt+KEY takes the character away. The
+  // key check of the first-day tutorial tells which lines to enable.
+
+  // French keyboard: Option+Shift+( types [
+  // { "key": "alt+shift+5", "command": "-emacs-mcx.queryReplace" },
+  // French keyboard: Option+Shift+: types a backslash
+  // { "key": "alt+/", "command": "-editor.action.triggerSuggest" },
+  // Any keyboard: Option+C types a c with a cedilla again, instead of capitalising a word
+  // { "key": "alt+c", "command": "-emacs-mcx.transformToTitlecase" },
+]

@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Launch the tool of this repository; see tool/vscode_settings.py."""
+
+import runpy
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+runpy.run_module("tool.vscode_settings", run_name="__main__")

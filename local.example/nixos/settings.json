@@ -1,0 +1,17 @@
+// Example of machine-local settings for a NixOS laptop.
+//
+// Copy it, as settings.json, into the machine-local directory that
+// `bin/vscode-settings status` prints, then edit it. It is overlaid on user/settings.json.
+{
+  // Nix owns the version of VS Code: it cannot update itself.
+  "update.mode": "none",
+  // Linux: Alt is Meta, so it must neither open a menu nor focus the menu bar.
+  "window.enableMenuBarMnemonics": false,
+  "window.customMenuBarAltFocus": false,
+  // No Option character to protect on this keyboard: M-0 to M-9 are prefix arguments again.
+  "emacs-mcx.enableDigitArgument": true
+
+  // If you install the extensions these belong to:
+  // "ltex.ltex-ls.path": "<the directory whose bin/ holds ltex-ls-plus>",
+  // "containers.containerClient": "com.microsoft.visualstudio.containers.podman",
+}

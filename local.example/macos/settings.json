@@ -1,0 +1,26 @@
+// Example of machine-local settings for a Mac, possibly managed by an employer.
+//
+// Copy it, as settings.json, into the machine-local directory that
+// `bin/vscode-settings status` prints, then edit it. It is overlaid on user/settings.json.
+// Untested: written without a Mac at hand.
+{
+  // No assistant reads the code until you know which ones the employer permits. Remove
+  // the line to get VS Code's default.
+  "chat.disableAIFeatures": true
+
+  // The key check of the first-day tutorial flips these on a US keyboard, where Option
+  // types no character you need:
+  // "emacs-mcx.enableDigitArgument": true,
+  // "terminal.integrated.macOptionIsMeta": true,
+
+  // A repository formats Python with Black, not Ruff: do not format it on save.
+  // "[python]": { "editor.formatOnSave": false },
+
+  // Screen sharing, and thousands of diagnostics in a repository that never ran a type
+  // checker: check only the open files.
+  // "basedpyright.analysis.diagnosticMode": "openFilesOnly",
+
+  // Values that name an employer live in this file and nowhere else, for example:
+  // "http.proxy", "github-enterprise.uri", "dbt.dbtPath", "dbt.profileName",
+  // "snowflake.connectionsConfigFile", "cSpell.userWords".
+}

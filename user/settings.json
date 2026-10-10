@@ -1,0 +1,199 @@
+// Settings that are right on every machine.
+//
+// `bin/vscode-settings apply` overlays them on the settings VS Code already has, then
+// overlays the machine-local file (see docs/tutorials/getting-started.md). A value that
+// differs between machines, or names an employer, belongs in that file, never here.
+//
+// The file is valid for VS Code as it stands: it can be pasted into "Preferences: Open
+// User Settings (JSON)" on a machine where the tool cannot run.
+//
+// Left at VS Code's defaults on purpose, so that the window looks like a colleague's: tabs,
+// the activity bar, the command centre, automatic updates of extensions.
+{
+  // == Look ==
+
+  // Follow the light or dark appearance of the system, as auto-dark does in Emacs.
+  "window.autoDetectColorScheme": true,
+  // The first installed font is used; Menlo and the generic family are the fallbacks.
+  "editor.fontFamily": "'Iosevka Nerd Font Mono', 'IosevkaTerm Nerd Font Mono', 'JetBrains Mono', Menlo, monospace",
+  "editor.fontLigatures": true,
+  "terminal.integrated.fontFamily": "'IosevkaTerm Nerd Font Mono', 'Iosevka Nerd Font Mono', Menlo, monospace",
+  "editor.minimap.enabled": false,
+  // The line width of the Emacs configuration.
+  "editor.rulers": [120],
+  "editor.renderWhitespace": "trailing",
+  // Inlay hints show while Ctrl+Alt is held; Python switches them on below, as in Emacs.
+  "editor.inlayHints.enabled": "offUnlessPressed",
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [{ "scope": "comment", "settings": { "fontStyle": "italic" } }]
+  },
+  "workbench.startupEditor": "none",
+  // The chat side bar does not open by itself in every new folder.
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  // An opened file stays open, as a buffer does, instead of being replaced by the next one.
+  "workbench.editor.enablePreview": false,
+  // Open and save files from a keyboard prompt with completion, not a system dialog.
+  "files.simpleDialog.enable": true,
+
+  // == Editing ==
+
+  // Format on save is set here, at the top level, and nowhere else: a team's workspace
+  // setting then overrides it. A language block below only switches it off or names the
+  // formatter, because a user's language block would beat a team's plain setting.
+  "editor.formatOnSave": true,
+  // Only the lines changed since the last commit are formatted, so that a save never
+  // rewrites a colleague's lines.
+  "editor.formatOnSaveMode": "modificationsIfAvailable",
+  "files.insertFinalNewline": true,
+  // The search field keeps the last search instead of taking the word under the cursor.
+  "editor.find.seedSearchStringFromSelection": "never",
+  // A diff shows changes of whitespace.
+  "diffEditor.ignoreTrimWhitespace": false,
+
+  // == Files and search ==
+
+  "files.associations": {
+    // The Snowflake extension claims every .sql file; dbt models are not Snowflake SQL.
+    "*.sql": "sql",
+    // What is meant to be run against the warehouse as it is.
+    "*.snow.sql": "snowflake-sql",
+    "**/target/compiled/**/*.sql": "snowflake-sql",
+    "**/target/run/**/*.sql": "snowflake-sql"
+  },
+  // Generated or installed files open read-only: go to definition lands in them.
+  "files.readonlyInclude": {
+    "**/target/compiled/**": true,
+    "**/target/run/**": true,
+    "**/dbt_packages/**": true,
+    "**/.venv/**": true
+  },
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/dbt_packages/**": true,
+    "**/.venv/**": true,
+    "**/.terraform/**": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/dbt_packages": true,
+    "**/.venv": true,
+    "**/.terraform": true
+  },
+  "search.smartCase": true,
+  // Ask once whether to trust a new folder; the default opens it restricted with only a
+  // banner, which makes extensions look broken.
+  "security.workspace.trust.startupPrompt": "once",
+
+  // == Terminal ==
+
+  // No key sequence of VS Code starts in the terminal: the shell gets every key.
+  "terminal.integrated.allowChords": false,
+  // A leading "-" lets the key reach the shell (C-j); the others let <f8> and <f9> work
+  // from the terminal.
+  "terminal.integrated.commandsToSkipShell": [
+    "-workbench.action.togglePanel",
+    "workbench.action.toggleSidebarVisibility",
+    "outline.focus"
+  ],
+  // macOS: Option keeps typing characters in the terminal (# on a UK keyboard). The key
+  // bindings send the Meta keys the shell needs. See the key check of the first-day tutorial.
+  "terminal.integrated.macOptionIsMeta": false,
+  // The shell completes by itself.
+  "terminal.integrated.suggest.enabled": false,
+  "terminal.integrated.scrollback": 10000,
+
+  // == Git ==
+
+  // Opening a sub-folder of a repository still shows the repository.
+  "git.openRepositoryInParentFolders": "always",
+
+  // == Emacs keys ==
+
+  // Alt, or Option on macOS, is Meta.
+  "emacs-mcx.useMetaPrefixAlt": true,
+  // M-0 to M-9 are not prefix arguments, so that Option+3 types # on a UK Mac keyboard.
+  // C-u still gives a prefix argument.
+  "emacs-mcx.enableDigitArgument": false,
+  // M-f, M-b and M-d stop where Emacs stops.
+  "emacs-mcx.wordNavigationStyle": "emacs",
+  // C-x C-c closes the window: ask first when it comes from the keyboard.
+  "window.confirmBeforeClose": "keyboardOnly",
+
+  // == Python ==
+
+  // basedpyright is the only language server, as strict as in Emacs. A project that has its
+  // own pyright or basedpyright section decides instead.
+  "basedpyright.analysis.typeCheckingMode": "all",
+  "basedpyright.analysis.diagnosticMode": "workspace",
+  // Ruff sorts the imports.
+  "basedpyright.disableOrganizeImports": true,
+  // The project's pyproject.toml or ruff.toml wins over the editor.
+  "ruff.configurationPreference": "filesystemFirst",
+  "python.testing.pytestEnabled": true,
+
+  // == SQL, dbt and Snowflake ==
+
+  // The Snowflake assistant sends code to the warehouse and spends credits: off until the
+  // team's policy is known. This also frees M-k and M-i.
+  "snowflake.coco.enabled": false,
+  // Sign in when needed, not at every window reload.
+  "snowflake.autoLoginOnActivation.enabled": false,
+  "dbt.trace.server": "off",
+  "dbt.logging.logLevel": "info",
+  "dbt.environmentVariables": { "DO_NOT_TRACK": "1" },
+  // One way to format on save, the one of the Editing section; and one linter, chosen with
+  // the team: this one, or SQLFluff from the sql group of extensions.
+  "dbt.formatOnSave": false,
+  "dbt.lintFixOnSave": false,
+  "dbt.lsp.linter.enabled": false,
+
+  // == Markdown and prose ==
+
+  // Broken links between pages are reported.
+  "markdown.validate.enabled": true,
+  "markdown.updateLinksOnFileMove.enabled": "prompt",
+  // Prose is wrapped by the window, not by hand.
+  "markdownlint.config": { "MD013": false },
+  "cSpell.language": "en-GB",
+
+  // == Privacy ==
+
+  "telemetry.telemetryLevel": "off",
+  "telemetry.feedback.enabled": false,
+  "workbench.enableExperiments": false,
+  "workbench.settings.enableNaturalLanguageSearch": false,
+  "python.experiments.enabled": false,
+  "redhat.telemetry.enabled": false,
+
+  // == Languages ==
+
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.inlayHints.enabled": "on"
+  },
+  // SQL is formatted by the tool the team chose, never by a save.
+  "[sql]": { "editor.formatOnSave": false },
+  "[jinja-sql]": { "editor.formatOnSave": false },
+  "[snowflake-sql]": { "editor.formatOnSave": false },
+  // The exception: `terraform fmt` is the only style Terraform has, and it formats whole files.
+  "[terraform]": {
+    "editor.defaultFormatter": "hashicorp.terraform",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file"
+  },
+  "[terraform-vars]": {
+    "editor.defaultFormatter": "hashicorp.terraform",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file"
+  },
+  // A formatter would rewrite the templates that dbt and Airflow keep in YAML.
+  "[yaml]": { "editor.defaultFormatter": "redhat.vscode-yaml", "editor.formatOnSave": false },
+  "[toml]": { "editor.formatOnSave": false },
+  "[markdown]": {
+    "editor.defaultFormatter": "DavidAnson.vscode-markdownlint",
+    "editor.formatOnSave": false,
+    "editor.wordWrap": "bounded",
+    "editor.wordWrapColumn": 120,
+    "editor.rulers": []
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "session-harness",
+  "publisher": "local",
+  "version": "0.0.1",
+  "description": "Loaded by the session tests into a throwaway VS Code; it only observes.",
+  "engines": { "vscode": "*" }
+}
