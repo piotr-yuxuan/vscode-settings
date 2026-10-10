@@ -5,11 +5,13 @@ const fs = require("fs");
 const path = require("path");
 
 exports.run = async function run() {
-  // A command of an extension that has not started yet is not registered: its manifest
-  // declares it, so both lists are needed to know every command.
-  const declared = vscode.extensions.all.flatMap((extension) =>
-    ((extension.packageJSON.contributes || {}).commands || []).map((command) => command.command)
-  );
+  // A command of an extension that has not started yet is not registered. Its manifest
+  // names it, as a command or as the target of one of its own key bindings, so all three
+  // lists are needed to know every command.
+  const declared = vscode.extensions.all.flatMap((extension) => {
+    const contributes = extension.packageJSON.contributes || {};
+    return [...(contributes.commands || []), ...(contributes.keybindings || [])].map((entry) => entry.command);
+  });
   const facts = {
     version: vscode.version,
     commands: [...new Set([...(await vscode.commands.getCommands(true)), ...declared])],
