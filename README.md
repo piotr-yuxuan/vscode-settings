@@ -5,6 +5,8 @@ stack: Snowflake, dbt, Airflow, Azure, Kubernetes, Terraform, GitHub, Python, SQ
 architecture diagrams in LikeC4. A small tool deploys it; tests start the real VS Code with
 it, on Linux and on macOS.
 
+![](./docs/social-media-preview.jpg)
+
 ## Start here
 
 ```zsh
